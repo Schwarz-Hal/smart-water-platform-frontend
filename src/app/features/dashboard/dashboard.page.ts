@@ -48,9 +48,9 @@ import { StatusChipComponent } from '../../shared/components/status-chip.compone
         <small>只保存当前浏览器会话创建/查看过的任务</small></mat-card
       >
       <mat-card
-        ><p>S01 漏损评估</p>
+        ><p>S01 漏损工作流</p>
         <h2>DMA 评估</h2>
-        <a routerLink="/s01-leakage">进入评估流程 →</a></mat-card
+        <a [routerLink]="['/workflows/new']" [queryParams]="{ template: 's01_leakage_basic' }">进入评估流程 →</a></mat-card
       >
     </section>
     <section class="panel">
@@ -59,7 +59,7 @@ import { StatusChipComponent } from '../../shared/components/status-chip.compone
           <h2>当前会话任务</h2>
           <p>平台暂未提供全局任务列表接口，因此此处不会伪造历史数据。</p>
         </div>
-        <a mat-flat-button color="primary" routerLink="/algorithms">运行算法</a>
+        <a mat-flat-button color="primary" [routerLink]="['/operators']" [queryParams]="{ kind: 'algorithm' }">进入算子中心</a>
       </div>
       @if (tasks().length) {
         <div class="task-list">
