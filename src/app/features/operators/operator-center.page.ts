@@ -93,6 +93,6 @@ export class OperatorCenterPage {
   select(operator: OperatorSummary): void { this.selected.set(operator); this.api.get<OperatorSummary>(`/api/v1/operators/${operator.code}`).subscribe({ next: (detail) => this.selected.set(detail) }); }
   toggle(operator: OperatorSummary): void {
     const nextStatus = operator.status === 'active' ? 'disabled' : 'active';
-    this.api.patch<OperatorSummary, { status: string; reason?: string }>(`/api/v1/operators/${operator.code}`, { status: nextStatus, reason: nextStatus === 'disabled' ? '由管理员在算子中心停用' : undefined }).subscribe({ next: (detail) => { this.selected.set(detail); this.load(); this.notice.success(nextStatus === 'active' ? '算子已启用。' : '算子已停用。'); }, error: () => this.message.set('算子状态更新失败。') });
+    this.api.patch<OperatorSummary, { status: string; disabled_reason?: string }>(`/api/v1/operators/${operator.code}`, { status: nextStatus, disabled_reason: nextStatus === 'disabled' ? '由管理员在算子中心停用' : undefined }).subscribe({ next: (detail) => { this.selected.set(detail); this.load(); this.notice.success(nextStatus === 'active' ? '算子已启用。' : '算子已停用。'); }, error: () => this.message.set('算子状态更新失败。') });
   }
 }
