@@ -103,6 +103,34 @@ describe('DataAssetPickerComponent', () => {
     expect(picker.valueSource()).toBe('raw');
   });
 
+  it('reloads isolated state when the same picker instance is switched to another node', () => {
+    const fixture = TestBed.createComponent(DataAssetPickerComponent);
+    const inletSelection: DataAssetSelection = {
+      asset,
+      version,
+      channels,
+      channel: channels[0],
+      value_source: 'processed',
+    };
+    const pressureSelection: DataAssetSelection = {
+      asset,
+      version,
+      channels,
+      channel: channels[1],
+      value_source: 'raw',
+    };
+
+    fixture.componentRef.setInput('selection', inletSelection);
+    fixture.detectChanges();
+    expect(fixture.componentInstance.pointId()).toBe(41);
+
+    fixture.componentRef.setInput('selection', pressureSelection);
+    fixture.detectChanges();
+
+    expect(fixture.componentInstance.pointId()).toBe(42);
+    expect(fixture.componentInstance.metricCode()).toBe('pressure');
+    expect(fixture.componentInstance.valueSource()).toBe('raw');
+  });
   it('restores the previously selected channel when the picker is recreated', () => {
     const fixture = TestBed.createComponent(DataAssetPickerComponent);
     const selection: DataAssetSelection = {

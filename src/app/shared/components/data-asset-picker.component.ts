@@ -2,8 +2,10 @@ import {
   Component,
   EventEmitter,
   Input,
+  OnChanges,
   OnInit,
   Output,
+  SimpleChanges,
   computed,
   inject,
   signal,
@@ -140,9 +142,11 @@ import { NotificationService } from '../../core/services/notification.service';
     }
   `,
 })
-export class DataAssetPickerComponent implements OnInit {
+export class DataAssetPickerComponent implements OnInit, OnChanges {
   private readonly api = inject(ApiClient);
   private readonly notifications = inject(NotificationService);
+  private initialized = false;
+  private loadGeneration = 0;
 
   @Input() selection: DataAssetSelection | null = null;
   @Output() readonly contextChange = new EventEmitter<DataAssetContext | null>();
@@ -172,22 +176,36 @@ export class DataAssetPickerComponent implements OnInit {
     () => this.pointChannels().find((channel) => channel.metric_code === this.metricCode()) ?? null,
   );
 
+  ngOnChanges(changes: SimpleChanges): void {
+    if (
+      this.initialized &&
+      changes['selection'] &&
+      !this.selectionMatchesCurrentState(this.selection)
+    ) {
+      this.loadAssets();
+    }
+  }
+
   ngOnInit(): void {
+    this.initialized = true;
     this.loadAssets();
   }
 
   loadAssets(): void {
+    const generation = ++this.loadGeneration;
     this.loadingAssets.set(true);
     this.api.get<DataAsset[]>('/api/v1/datasets').subscribe({
       next: (assets) => {
+        if (generation !== this.loadGeneration) return;
         this.assets.set(assets);
         const preferredAssetId = this.selection?.asset.id ?? this.assetId();
         const selected = assets.find((asset) => asset.id === preferredAssetId) ?? assets[0] ?? null;
-        if (selected) this.selectAsset(selected.id, this.selection);
+        if (selected) this.selectAsset(selected.id, this.selection, generation);
         else this.clearSelection();
         this.loadingAssets.set(false);
       },
       error: (error: unknown) => {
+        if (generation !== this.loadGeneration) return;
         this.loadingAssets.set(false);
         this.clearSelection();
         this.notifications.error(error, '无法读取可用数据资产。');
@@ -195,7 +213,11 @@ export class DataAssetPickerComponent implements OnInit {
     });
   }
 
-  selectAsset(value: unknown, preferred: DataAssetSelection | null = null): void {
+  selectAsset(
+    value: unknown,
+    preferred: DataAssetSelection | null = null,
+    generation = ++this.loadGeneration,
+  ): void {
     const id = this.asPositiveInteger(value);
     if (!id) return;
     this.assetId.set(id);
@@ -204,17 +226,19 @@ export class DataAssetPickerComponent implements OnInit {
     this.loadingVersions.set(true);
     this.api.get<DatasetVersion[]>(`/api/v1/datasets/${id}/versions`).subscribe({
       next: (versions) => {
+        if (generation !== this.loadGeneration) return;
         this.versions.set(versions);
         const selected =
           versions.find((version) => version.id === preferred?.version.id) ??
           versions.find((version) => version.status === 'ready') ??
           versions[0] ??
           null;
-        if (selected) this.selectVersion(selected.id, preferred);
+        if (selected) this.selectVersion(selected.id, preferred, generation);
         else this.clearVersion();
         this.loadingVersions.set(false);
       },
       error: (error: unknown) => {
+        if (generation !== this.loadGeneration) return;
         this.loadingVersions.set(false);
         this.clearVersion();
         this.notifications.error(error, '无法读取数据版本。');
@@ -222,13 +246,18 @@ export class DataAssetPickerComponent implements OnInit {
     });
   }
 
-  selectVersion(value: unknown, preferred: DataAssetSelection | null = null): void {
+  selectVersion(
+    value: unknown,
+    preferred: DataAssetSelection | null = null,
+    generation = ++this.loadGeneration,
+  ): void {
     const id = this.asPositiveInteger(value);
     if (!id) return;
     this.versionId.set(id);
     this.loadingChannels.set(true);
     this.api.get<DatasetChannel[]>(`/api/v1/dataset-versions/${id}/channels`).subscribe({
       next: (channels) => {
+        if (generation !== this.loadGeneration) return;
         this.channels.set(channels);
         const selected =
           channels.find(
@@ -254,6 +283,7 @@ export class DataAssetPickerComponent implements OnInit {
         this.emitSelection();
       },
       error: (error: unknown) => {
+        if (generation !== this.loadGeneration) return;
         this.loadingChannels.set(false);
         this.clearVersion();
         this.notifications.error(error, '无法读取点位和指标通道。');
@@ -279,6 +309,17 @@ export class DataAssetPickerComponent implements OnInit {
   selectValueSource(value: unknown): void {
     if (value === 'raw' || value === 'processed') this.valueSource.set(value);
     this.emitSelection();
+  }
+
+  private selectionMatchesCurrentState(selection: DataAssetSelection | null): boolean {
+    if (!selection?.channel) return this.assetId() === null;
+    return (
+      this.assetId() === selection.asset.id &&
+      this.versionId() === selection.version.id &&
+      this.pointId() === selection.channel.monitor_point_id &&
+      this.metricCode() === selection.channel.metric_code &&
+      this.valueSource() === selection.value_source
+    );
   }
 
   private emitSelection(): void {
