@@ -148,45 +148,51 @@ interface DockGesture {
           {{ catalogCollapsed() ? '›' : '‹' }}
         </button>
         <div class="dock-scroll">
-        @if (!catalogCollapsed()) {
-          <div class="heading dock-drag-handle" (pointerdown)="startDockDrag($event, 'catalog')">
-            <div>
-              <span class="kicker">算子目录</span>
-              <h2>可用节点</h2>
+          @if (!catalogCollapsed()) {
+            <div class="heading dock-drag-handle" (pointerdown)="startDockDrag($event, 'catalog')">
+              <div>
+                <span class="kicker">算子目录</span>
+                <h2>可用节点</h2>
+              </div>
+              <small>{{ definitions().length }}</small>
             </div>
-            <small>{{ definitions().length }}</small>
-          </div>
-          <label class="search">搜索<input [(ngModel)]="search" placeholder="名称或编码" /></label>
-          <p class="catalog-help">点击添加或拖入画布。</p>
-          <div class="catalog-groups">
-            @for (group of groupedDefinitions(); track group.category) {
-              <section class="catalog-group">
-                <button class="group-header" type="button" (click)="toggleCategory(group.category)">
-                  <span
-                    ><b>{{ group.label }}</b
-                    ><small>{{ group.items.length }}</small></span
-                  ><span>{{ isCategoryOpen(group.category) ? '−' : '+' }}</span>
-                </button>
-                @if (isCategoryOpen(group.category)) {
-                  @for (item of group.items; track item.node_code) {
-                    <button
-                      class="catalog-item"
-                      draggable="true"
-                      (dragstart)="onCatalogDragStart($event, item)"
-                      (click)="addNode(item)"
-                    >
-                      <i [class.gpu]="item.runtime_type === 'builtin_gpu'"></i>
-                      <span
-                        ><b>{{ item.node_name }}</b
-                        ><small>{{ item.node_code }}</small></span
+            <label class="search"
+              >搜索<input [(ngModel)]="search" placeholder="名称或编码"
+            /></label>
+            <p class="catalog-help">点击添加或拖入画布。</p>
+            <div class="catalog-groups">
+              @for (group of groupedDefinitions(); track group.category) {
+                <section class="catalog-group">
+                  <button
+                    class="group-header"
+                    type="button"
+                    (click)="toggleCategory(group.category)"
+                  >
+                    <span
+                      ><b>{{ group.label }}</b
+                      ><small>{{ group.items.length }}</small></span
+                    ><span>{{ isCategoryOpen(group.category) ? '−' : '+' }}</span>
+                  </button>
+                  @if (isCategoryOpen(group.category)) {
+                    @for (item of group.items; track item.node_code) {
+                      <button
+                        class="catalog-item"
+                        draggable="true"
+                        (dragstart)="onCatalogDragStart($event, item)"
+                        (click)="addNode(item)"
                       >
-                    </button>
+                        <i [class.gpu]="item.runtime_type === 'builtin_gpu'"></i>
+                        <span
+                          ><b>{{ item.node_name }}</b
+                          ><small>{{ item.node_code }}</small></span
+                        >
+                      </button>
+                    }
                   }
-                }
-              </section>
-            }
-          </div>
-        }
+                </section>
+              }
+            </div>
+          }
         </div>
         <span
           class="dock-resize-handle"
@@ -249,99 +255,108 @@ interface DockGesture {
           </button>
         </div>
         <div class="dock-scroll">
-        @if (!inspectorCollapsed()) {
-        @if (selectedNode(); as node) {
-          <small>{{ node.node_code }} · {{ node.node_version }}</small>
-          <p class="description">{{ node.definition?.description }}</p>
-          <h3>端口</h3>
-          <div class="ports">
-            @for (port of node.definition?.input_ports || []; track port.key) {
-              <span class="in"
-                >← {{ port.label }}
-                <small>{{ port.data_type }}{{ port.unit ? ' · ' + port.unit : '' }}</small></span
-              >
-            }
-            @for (port of node.definition?.output_ports || []; track port.key) {
-              <span class="out"
-                >{{ port.label }} →
-                <small>{{ port.data_type }}{{ port.unit ? ' · ' + port.unit : '' }}</small></span
-              >
-            }
-          </div>
-          <h3>参数</h3>
-          @for (entry of parameterEntries(node); track entry.key) {
-            <label class="parameter"
-              ><span>{{ entry.key }}</span>
-              @if (parameterSchema(node, entry.key)['enum']; as options) {
-                <select
-                  [ngModel]="entry.value"
-                  (ngModelChange)="setParameter(node.id, entry.key, $event)"
-                >
-                  @for (option of options; track option) {
-                    <option [ngValue]="option">{{ option }}</option>
+          @if (!inspectorCollapsed()) {
+            @if (selectedNode(); as node) {
+              <small>{{ node.node_code }} · {{ node.node_version }}</small>
+              <p class="description">{{ node.definition?.description }}</p>
+              <h3>端口</h3>
+              <div class="ports">
+                @for (port of node.definition?.input_ports || []; track port.key) {
+                  <span class="in"
+                    >← {{ port.label }}
+                    <small
+                      >{{ port.data_type }}{{ port.unit ? ' · ' + port.unit : '' }}</small
+                    ></span
+                  >
+                }
+                @for (port of node.definition?.output_ports || []; track port.key) {
+                  <span class="out"
+                    >{{ port.label }} →
+                    <small
+                      >{{ port.data_type }}{{ port.unit ? ' · ' + port.unit : '' }}</small
+                    ></span
+                  >
+                }
+              </div>
+              <h3>参数</h3>
+              @for (entry of parameterEntries(node); track entry.key) {
+                <label class="parameter"
+                  ><span>{{ entry.key }}</span>
+                  @if (parameterSchema(node, entry.key)['enum']; as options) {
+                    <select
+                      [ngModel]="entry.value"
+                      (ngModelChange)="setParameter(node.id, entry.key, $event)"
+                    >
+                      @for (option of options; track option) {
+                        <option [ngValue]="option">{{ option }}</option>
+                      }
+                    </select>
+                  } @else if (parameterSchema(node, entry.key)['type'] === 'boolean') {
+                    <input
+                      type="checkbox"
+                      [checked]="entry.value === true"
+                      (change)="setParameter(node.id, entry.key, $any($event.target).checked)"
+                    />
+                  } @else if (
+                    parameterSchema(node, entry.key)['type'] === 'number' ||
+                    parameterSchema(node, entry.key)['type'] === 'integer'
+                  ) {
+                    <input
+                      type="number"
+                      [ngModel]="entry.value"
+                      (ngModelChange)="
+                        setParameter(
+                          node.id,
+                          entry.key,
+                          coerceNumber(
+                            $event,
+                            parameterSchema(node, entry.key)['type'] === 'integer'
+                          )
+                        )
+                      "
+                    />
+                  } @else {
+                    <input
+                      [ngModel]="entry.value"
+                      (ngModelChange)="setParameter(node.id, entry.key, $event)"
+                    />
                   }
-                </select>
-              } @else if (parameterSchema(node, entry.key)['type'] === 'boolean') {
-                <input
-                  type="checkbox"
-                  [checked]="entry.value === true"
-                  (change)="setParameter(node.id, entry.key, $any($event.target).checked)"
-                />
-              } @else if (
-                parameterSchema(node, entry.key)['type'] === 'number' ||
-                parameterSchema(node, entry.key)['type'] === 'integer'
-              ) {
-                <input
-                  type="number"
-                  [ngModel]="entry.value"
-                  (ngModelChange)="
-                    setParameter(
-                      node.id,
-                      entry.key,
-                      coerceNumber($event, parameterSchema(node, entry.key)['type'] === 'integer')
-                    )
-                  "
-                />
-              } @else {
-                <input
-                  [ngModel]="entry.value"
-                  (ngModelChange)="setParameter(node.id, entry.key, $event)"
-                />
+                </label>
               }
-            </label>
-          }
-          <div class="output-ports">
-            <b>工作流输出</b>
-            @for (port of node.definition?.output_ports || []; track port.key) {
-              <label
-                ><input
-                  type="checkbox"
-                  [checked]="isOutputPort(node.id, port.key)"
-                  (change)="toggleOutputPort(node.id, port.key)"
-                />
-                {{ port.label || port.key }}</label
-              >
+              <div class="output-ports">
+                <b>工作流输出</b>
+                @for (port of node.definition?.output_ports || []; track port.key) {
+                  <label
+                    ><input
+                      type="checkbox"
+                      [checked]="isOutputPort(node.id, port.key)"
+                      (change)="toggleOutputPort(node.id, port.key)"
+                    />
+                    {{ port.label || port.key }}</label
+                  >
+                }
+              </div>
+              <button mat-stroked-button color="warn" (click)="removeNode(node.id)">
+                移除节点
+              </button>
+            } @else {
+              <div class="empty static">选择节点查看端口和参数。</div>
             }
-          </div>
-          <button mat-stroked-button color="warn" (click)="removeNode(node.id)">移除节点</button>
-        } @else {
-          <div class="empty static">选择节点查看端口和参数。</div>
-        }
-        @if (selectedDatasetChannel(); as binding) {
-          <section class="binding-panel">
-            <hr />
-            <h3>运行数据绑定</h3>
-            <p class="help">仅配置当前选中的数据通道。</p>
-            <div class="binding">
-              <b>{{ binding.label }}</b>
-              <app-data-asset-picker
-                [selection]="binding.selection"
-                (selectionChange)="setBinding(binding.id, $event)"
-              />
-            </div>
-          </section>
-        }
-        }
+            @if (selectedDatasetChannel(); as binding) {
+              <section class="binding-panel">
+                <hr />
+                <h3>运行数据绑定</h3>
+                <p class="help">仅配置当前选中的数据通道。</p>
+                <div class="binding">
+                  <b>{{ binding.label }}</b>
+                  <app-data-asset-picker
+                    [selection]="binding.selection"
+                    (selectionChange)="setBinding(binding.id, $event)"
+                  />
+                </div>
+              </section>
+            }
+          }
         </div>
         <span
           class="dock-resize-handle"
@@ -895,7 +910,9 @@ interface DockGesture {
       outline: 3px solid #f79009;
       outline-offset: 3px;
       border-radius: 10px;
-      box-shadow: 0 0 0 6px #f7900926, 0 8px 20px #f7900940;
+      box-shadow:
+        0 0 0 6px #f7900926,
+        0 8px 20px #f7900940;
     }
     .actions {
       justify-content: flex-end;
@@ -1148,13 +1165,25 @@ export class WorkflowEditorPage implements AfterViewInit, OnDestroy {
     const dy = event.clientY - gesture.startY;
     const current = this.dockState(gesture.kind);
     if (gesture.mode === 'drag') {
-      const left = this.clamp(gesture.left + dx, 0, Math.max(0, gesture.layoutWidth - gesture.width));
-      const top = this.clamp(gesture.top + dy, 0, Math.max(0, gesture.layoutHeight - gesture.height));
+      const left = this.clamp(
+        gesture.left + dx,
+        0,
+        Math.max(0, gesture.layoutWidth - gesture.width),
+      );
+      const top = this.clamp(
+        gesture.top + dy,
+        0,
+        Math.max(0, gesture.layoutHeight - gesture.height),
+      );
       this.setDockState(gesture.kind, { ...current, left, right: null, top });
       return;
     }
     const minWidth = gesture.kind === 'catalog' ? 220 : 260;
-    const width = this.clamp(gesture.width + dx, minWidth, Math.min(640, gesture.layoutWidth - gesture.left - 10));
+    const width = this.clamp(
+      gesture.width + dx,
+      minWidth,
+      Math.min(640, gesture.layoutWidth - gesture.left - 10),
+    );
     const height = this.clamp(
       gesture.height + dy,
       220,
@@ -1227,21 +1256,36 @@ export class WorkflowEditorPage implements AfterViewInit, OnDestroy {
       window.addEventListener('beforeunload', this.beforeUnload);
       this.restoreDockPreferences();
     }
-    this.api.get<{ items: OperatorSummary[] }>('/api/v1/operators', { page: 1, page_size: 100 }).subscribe({
-      next: ({ items }) => {
-        const catalog = (items || []).filter((item) => item.status === 'active' && item.available && item.active_version?.available).map((item) => this.operatorDefinition(item)).filter((item): item is Definition => item !== null);
-        this.definitions.set(catalog);
-        this.definitionByCode = new Map(catalog.map((item) => [item.node_code, item]));
-        const workflowId = this.route?.snapshot.paramMap.get('workflowId');
-        if (!workflowId) { this.showError('工作流草稿不存在，请先从工作流入口创建草稿。'); return; }
-        this.workflowId.set(Number(workflowId));
-        this.api.get<Record<string, unknown>>('/api/v1/workflows/' + workflowId).subscribe({
-          next: (workflow) => { this.draftRevision.set(Number(workflow['draft_revision'] || 1)); this.loadGraph(workflow['draft_graph'] as Graph); this.checkRecovery(workflow); },
-          error: () => this.showError('工作流草稿加载失败，可能已被删除或你没有访问权限。'),
-        });
-      },
-      error: () => this.showError('算子目录加载失败，请检查工作流权限。'),
-    });
+    this.api
+      .get<{ items: OperatorSummary[] }>('/api/v1/operators', { page: 1, page_size: 100 })
+      .subscribe({
+        next: ({ items }) => {
+          const catalog = (items || [])
+            .filter(
+              (item) =>
+                item.status === 'active' && item.available && item.active_version?.available,
+            )
+            .map((item) => this.operatorDefinition(item))
+            .filter((item): item is Definition => item !== null);
+          this.definitions.set(catalog);
+          this.definitionByCode = new Map(catalog.map((item) => [item.node_code, item]));
+          const workflowId = this.route?.snapshot.paramMap.get('workflowId');
+          if (!workflowId) {
+            this.showError('工作流草稿不存在，请先从工作流入口创建草稿。');
+            return;
+          }
+          this.workflowId.set(Number(workflowId));
+          this.api.get<Record<string, unknown>>('/api/v1/workflows/' + workflowId).subscribe({
+            next: (workflow) => {
+              this.draftRevision.set(Number(workflow['draft_revision'] || 1));
+              this.loadGraph(workflow['draft_graph'] as Graph);
+              this.checkRecovery(workflow);
+            },
+            error: () => this.showError('工作流草稿加载失败，可能已被删除或你没有访问权限。'),
+          });
+        },
+        error: () => this.showError('算子目录加载失败，请检查工作流权限。'),
+      });
   }
   private operatorDefinition(item: OperatorSummary): Definition | null {
     const version = item.active_version;
@@ -1355,7 +1399,10 @@ export class WorkflowEditorPage implements AfterViewInit, OnDestroy {
         if (!source || !target || source === target || this.wouldCreateCycle(source, target))
           return;
       }
-      if (!this.hydratingRete && (context.type === 'connectioncreated' || context.type === 'connectionremoved')) {
+      if (
+        !this.hydratingRete &&
+        (context.type === 'connectioncreated' || context.type === 'connectionremoved')
+      ) {
         this.syncEdgesFromRete();
       }
       return context;
@@ -1459,7 +1506,13 @@ export class WorkflowEditorPage implements AfterViewInit, OnDestroy {
   private async addReteConnection(edge: Edge): Promise<boolean> {
     const source = this.reteNodes.get(edge.source.node_id);
     const target = this.reteNodes.get(edge.target.node_id);
-    if (!source || !target || !source.outputs?.[edge.source.port] || !target.inputs?.[edge.target.port]) return false;
+    if (
+      !source ||
+      !target ||
+      !source.outputs?.[edge.source.port] ||
+      !target.inputs?.[edge.target.port]
+    )
+      return false;
     const connection = new ClassicPreset.Connection(
       source,
       edge.source.port,
@@ -1675,8 +1728,10 @@ export class WorkflowEditorPage implements AfterViewInit, OnDestroy {
       },
       error: (error: any) => {
         this.busy.set(false);
-        this.autosaveState.set(error?.status === 409 ? 'conflict' : 'offline');
-        this.showError('草稿保存失败，请检查图结构和权限。');
+        this.autosaveState.set(
+          error?.status === 409 ? 'conflict' : error?.status === 422 ? 'dirty' : 'offline',
+        );
+        this.showError(this.draftSaveErrorMessage(error));
       },
     });
   }
@@ -1766,7 +1821,9 @@ export class WorkflowEditorPage implements AfterViewInit, OnDestroy {
           if (userId) void this.workflowCache.remove(userId, workflowId);
         },
         error: (error: any) => {
-          this.autosaveState.set(error?.status === 409 ? 'conflict' : 'offline');
+          this.autosaveState.set(
+            error?.status === 409 ? 'conflict' : error?.status === 422 ? 'dirty' : 'offline',
+          );
         },
       });
   }
@@ -1785,9 +1842,20 @@ export class WorkflowEditorPage implements AfterViewInit, OnDestroy {
       if (typeof window !== 'undefined' && window.confirm('发现未同步的本机草稿，是否恢复？')) {
         this.loadGraph(draft.graph as unknown as Graph);
         this.markDirty();
+      } else {
+        void this.workflowCache.remove(userId, workflowId);
       }
     });
   }
+
+  private draftSaveErrorMessage(error: any): string {
+    const detail = error?.error?.detail;
+    if (detail?.code === 'WORKFLOW_DRAFT_INVALID' && Array.isArray(detail.errors)) {
+      return '草稿包含无效配置：' + detail.errors.join('；');
+    }
+    return '草稿保存失败，请检查图结构和权限。';
+  }
+
   private show(text: string): void {
     this.messageType.set('info');
     this.message.set(text);
