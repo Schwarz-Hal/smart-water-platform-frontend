@@ -1038,6 +1038,7 @@ export class WorkflowEditorPage implements AfterViewInit, OnDestroy {
   private reteEditor: any;
   private reteArea: any;
   private reteSelection: any;
+  private reteSelectableNodes: any;
   private resizeObserver?: ResizeObserver;
   private reteNodes = new Map<string, any>();
   private definitionByCode = new Map<string, Definition>();
@@ -1312,7 +1313,7 @@ export class WorkflowEditorPage implements AfterViewInit, OnDestroy {
     this.reteEditor = new NodeEditor();
     this.reteArea = new AreaPlugin(host);
     this.reteSelection = AreaExtensions.selector();
-    AreaExtensions.selectableNodes(this.reteArea, this.reteSelection, {
+    this.reteSelectableNodes = AreaExtensions.selectableNodes(this.reteArea, this.reteSelection, {
       accumulating: AreaExtensions.accumulateOnCtrl(),
     });
     this.installReteSync();
@@ -1496,7 +1497,9 @@ export class WorkflowEditorPage implements AfterViewInit, OnDestroy {
     if (this.reteEditor) {
       await this.addReteNode(item);
       const rete = this.reteNodes.get(item.id);
-      if (rete && this.reteSelection) await this.reteSelection.add(rete, false);
+      if (rete && this.reteSelectableNodes) {
+        await this.reteSelectableNodes.select(rete.id, false);
+      }
     }
     this.pushHistory(this.graph());
     this.markDirty();
