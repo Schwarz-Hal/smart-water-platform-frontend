@@ -26,12 +26,12 @@ export const routes: Routes = [
         data: { permission: 'data_source:read' },
       },
       {
-        path: 'algorithms',
-        loadComponent: () =>
-          import('./features/algorithms/algorithms.page').then((m) => m.AlgorithmsPage),
+        path: 'operators',
+        loadComponent: () => import('./features/operators/operator-center.page').then((m) => m.OperatorCenterPage),
         canActivate: [permissionGuard],
-        data: { permission: 'algorithm:read' },
+        data: { permission: 'operator:read' },
       },
+      { path: 'algorithms', redirectTo: 'operators?kind=algorithm', pathMatch: 'full' },
       {
         path: 'tasks/:taskId',
         loadComponent: () =>
@@ -45,11 +45,7 @@ export const routes: Routes = [
         canActivate: [permissionGuard],
         data: { permission: 'result:read' },
       },
-      {
-        path: 's01-leakage',
-        loadComponent: () =>
-          import('./features/s01-leakage/s01-workspace.page').then((m) => m.S01WorkspacePage),
-      },
+      { path: 's01-leakage', redirectTo: 'workflows/new?template=s01_leakage_basic', pathMatch: 'full' },
       {
         path: 'workflows',
         loadComponent: () =>
@@ -59,10 +55,9 @@ export const routes: Routes = [
       },
       {
         path: 'workflows/new',
-        loadComponent: () =>
-          import('./features/workflows/workflow-library.page').then((m) => m.WorkflowLibraryPage),
+        loadComponent: () => import('./features/workflows/workflow-starter.page').then((m) => m.WorkflowStarterPage),
         canActivate: [permissionGuard],
-        data: { permission: 'workflow:read' },
+        data: { permission: 'workflow:edit' },
       },
       {
         path: 'workflows/:workflowId/edit',

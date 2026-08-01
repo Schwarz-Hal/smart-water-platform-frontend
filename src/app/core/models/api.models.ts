@@ -390,3 +390,48 @@ export interface WorkflowResult {
   run: WorkflowRunSummary;
   outputs: WorkflowArtifact[];
 }
+
+export interface OperatorVersionSummary {
+  id: number;
+  version: string;
+  status: string;
+  runtime_type: string;
+  executor_type: string;
+  maturity: string;
+  contract_sha256: string | null;
+  input_ports: Array<Record<string, unknown>>;
+  output_ports: Array<Record<string, unknown>>;
+  parameter_schema: Record<string, unknown>;
+  ui_schema: Record<string, unknown>;
+  visualization_schema: Record<string, unknown>;
+  algorithm: Record<string, unknown> | null;
+  available: boolean;
+}
+
+export interface OperatorSummary {
+  code: string;
+  name: string;
+  description: string;
+  kind: string;
+  category: string;
+  status: string;
+  visibility: string;
+  disabled_reason: string | null;
+  available: boolean;
+  unavailable_reason: string | null;
+  can_manage: boolean;
+  active_version: OperatorVersionSummary | null;
+  version_count: number;
+  versions?: OperatorVersionSummary[];
+}
+
+export interface WorkflowTemplateSummary {
+  template_code: string;
+  version: string;
+  name: string;
+  description: string;
+  required_bindings: string[];
+  outputs: string[];
+  node_count: number;
+  edge_count: number;
+}

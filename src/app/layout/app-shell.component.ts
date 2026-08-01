@@ -159,9 +159,8 @@ export class AppShellComponent {
   private readonly items: NavigationItem[] = [
     { label: '平台概览', route: '/dashboard' },
     { label: '数据源与导入', route: '/data-sources', permission: 'data_source:read' },
-    { label: '算法运行', route: '/algorithms', permission: 'algorithm:read' },
-    { label: 'S01 漏损评估', route: '/s01-leakage' },
-    { label: 'DAG 工作流', route: '/workflows', permission: 'workflow:read' },
+    { label: '算子中心', route: '/operators', permission: 'operator:read' },
+    { label: '工作流', route: '/workflows', permission: 'workflow:read' },
     { label: '工作流运行记录', route: '/workflow-runs', permission: 'workflow:read' },
     { label: '用户与角色', route: '/users', permission: 'user:manage' },
   ];
