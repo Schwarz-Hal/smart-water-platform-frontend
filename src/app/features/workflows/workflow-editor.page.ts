@@ -1364,7 +1364,10 @@ export class WorkflowEditorPage implements AfterViewInit, OnDestroy {
         const id = this.backendIdForRete(context.data.id);
         if (id) this.selectedId.set(id);
       }
-      if (context.type === 'nodetranslated' || context.type === 'nodetranslate') {
+      if (
+        !this.hydratingRete &&
+        (context.type === 'nodetranslated' || context.type === 'nodetranslate')
+      ) {
         const id = this.backendIdForRete(context.data.id);
         if (id && context.data.position) {
           this.nodes.update((items) =>
