@@ -1370,14 +1370,18 @@ export class WorkflowEditorPage implements AfterViewInit, OnDestroy {
       ) {
         const id = this.backendIdForRete(context.data.id);
         if (id && context.data.position) {
+          const x = Number(context.data.position.x);
+          const y = Number(context.data.position.y);
+          let changed = false;
           this.nodes.update((items) =>
-            items.map((item) =>
-              item.id === id
-                ? { ...item, x: context.data.position.x, y: context.data.position.y }
-                : item,
-            ),
+            items.map((item) => {
+              if (item.id !== id) return item;
+              if (item.x === x && item.y === y) return item;
+              changed = true;
+              return { ...item, x, y };
+            }),
           );
-          this.markDirty();
+          if (changed) this.markDirty();
         }
       }
       return context;
