@@ -72,6 +72,28 @@ interface Graph {
   outputs: Array<{ node_id: string; port: string }>;
 }
 
+type DockKind = 'catalog' | 'inspector';
+interface DockLayout {
+  left: number | null;
+  right: number | null;
+  top: number;
+  width: number;
+  height: number | null;
+}
+
+interface DockGesture {
+  kind: DockKind;
+  mode: 'drag' | 'resize';
+  startX: number;
+  startY: number;
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+  layoutWidth: number;
+  layoutHeight: number;
+}
+
 @Component({
   selector: 'app-workflow-editor-page',
   imports: [FormsModule, MatButtonModule, MatCardModule, MatSliderModule, DataAssetPickerComponent],
@@ -109,7 +131,14 @@ interface Graph {
       <div class="message" [class.error]="messageType() === 'error'">{{ message() }}</div>
     }
     <section class="layout">
-      <aside class="panel catalog" [class.collapsed]="catalogCollapsed()">
+      <aside
+        class="panel catalog dock"
+        [class.collapsed]="catalogCollapsed()"
+        [style.left.px]="catalogDock().left"
+        [style.top.px]="catalogDock().top"
+        [style.width.px]="catalogCollapsed() ? 42 : catalogDock().width"
+        [style.height.px]="catalogDock().height"
+      >
         <button
           class="dock-toggle"
           type="button"
@@ -118,8 +147,9 @@ interface Graph {
         >
           {{ catalogCollapsed() ? '›' : '‹' }}
         </button>
+        <div class="dock-scroll">
         @if (!catalogCollapsed()) {
-          <div class="heading">
+          <div class="heading dock-drag-handle" (pointerdown)="startDockDrag($event, 'catalog')">
             <div>
               <span class="kicker">算子目录</span>
               <h2>可用节点</h2>
@@ -157,6 +187,12 @@ interface Graph {
             }
           </div>
         }
+        </div>
+        <span
+          class="dock-resize-handle"
+          aria-hidden="true"
+          (pointerdown)="startDockResize($event, 'catalog')"
+        ></span>
       </aside>
       <main class="panel canvas-panel">
         <div class="toolbar">
@@ -188,13 +224,32 @@ interface Graph {
           </button>
         </div>
       </main>
-      <aside class="panel inspector">
-        <div class="heading">
+      <aside
+        class="panel inspector dock"
+        [class.collapsed]="inspectorCollapsed()"
+        [style.left.px]="inspectorDock().left"
+        [style.right.px]="inspectorDock().right"
+        [style.top.px]="inspectorDock().top"
+        [style.width.px]="inspectorCollapsed() ? 42 : inspectorDock().width"
+        [style.height.px]="inspectorDock().height"
+      >
+        <div class="heading dock-drag-handle" (pointerdown)="startDockDrag($event, 'inspector')">
           <div>
             <span class="kicker">节点属性</span>
             <h2>配置与运行</h2>
           </div>
+          <button
+            class="dock-toggle inspector-toggle"
+            type="button"
+            (pointerdown)="$event.stopPropagation()"
+            (click)="inspectorCollapsed.update((value) => !value)"
+            [attr.aria-label]="inspectorCollapsed() ? '展开节点属性' : '收起节点属性'"
+          >
+            {{ inspectorCollapsed() ? '‹' : '›' }}
+          </button>
         </div>
+        <div class="dock-scroll">
+        @if (!inspectorCollapsed()) {
         @if (selectedNode(); as node) {
           <small>{{ node.node_code }} · {{ node.node_version }}</small>
           <p class="description">{{ node.definition?.description }}</p>
@@ -283,6 +338,13 @@ interface Graph {
             </div>
           </section>
         }
+        }
+        </div>
+        <span
+          class="dock-resize-handle"
+          aria-hidden="true"
+          (pointerdown)="startDockResize($event, 'inspector')"
+        ></span>
       </aside>
     </section>
   `,
@@ -653,7 +715,7 @@ interface Graph {
       }
       .layout .catalog {
         max-height: 360px;
-        overflow: auto;
+        overflow: hidden;
       }
     }
     /* Workspace mode: docks float above a full-height Rete canvas. */
@@ -688,13 +750,23 @@ interface Graph {
       z-index: 20;
       top: 14px;
       max-height: calc(100% - 28px);
-      overflow: auto;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
       box-shadow: 0 12px 34px #10182824;
     }
     .catalog {
       left: 14px;
       width: 250px;
       box-sizing: border-box;
+    }
+    .dock-scroll {
+      flex: 1 1 auto;
+      min-height: 0;
+      overflow: auto;
+    }
+    .dock > .heading {
+      flex: 0 0 auto;
     }
     .catalog.collapsed {
       width: 42px;
@@ -778,6 +850,37 @@ interface Graph {
         transform 0.2s ease,
         opacity 0.2s ease;
     }
+    .dock-drag-handle {
+      cursor: move;
+      user-select: none;
+      touch-action: none;
+    }
+    .dock-resize-handle {
+      position: absolute;
+      right: 4px;
+      bottom: 4px;
+      width: 15px;
+      height: 15px;
+      border-right: 2px solid #98a2b3;
+      border-bottom: 2px solid #98a2b3;
+      border-radius: 0 0 5px 0;
+      cursor: nwse-resize;
+      opacity: 0.75;
+      touch-action: none;
+      z-index: 5;
+    }
+    .dock-resize-handle:hover {
+      border-color: #2563eb;
+      opacity: 1;
+    }
+    .dock.collapsed .dock-resize-handle {
+      display: none;
+    }
+    .inspector-toggle {
+      position: static !important;
+      flex: 0 0 auto;
+      margin: 0 !important;
+    }
     .inspector .heading {
       border-bottom: 1px solid #f2f4f7;
       padding-bottom: 8px;
@@ -786,12 +889,10 @@ interface Graph {
       display: none;
     }
     :host ::ng-deep [data-testid='node'].selected {
-      filter: drop-shadow(0 0 8px #f79009aa);
-    }
-    :host ::ng-deep [data-testid='node'].selected > * {
       outline: 3px solid #f79009;
-      outline-offset: 2px;
+      outline-offset: 3px;
       border-radius: 10px;
+      box-shadow: 0 0 0 6px #f7900926, 0 8px 20px #f7900940;
     }
     .actions {
       justify-content: flex-end;
@@ -825,11 +926,11 @@ interface Graph {
       }
       .catalog {
         left: 10px;
-        width: min(78vw, 280px);
+        width: min(78vw, 280px) !important;
       }
       .inspector {
         right: 10px;
-        width: min(86vw, 330px);
+        width: min(86vw, 330px) !important;
       }
       .canvas-tools {
         left: 10px;
@@ -875,6 +976,24 @@ export class WorkflowEditorPage implements AfterViewInit, OnDestroy {
   readonly historyIndex = signal(-1);
   search = '';
   readonly catalogCollapsed = signal(false);
+  readonly inspectorCollapsed = signal(false);
+  readonly catalogDock = signal<DockLayout>({
+    left: 14,
+    right: null,
+    top: 14,
+    width: 250,
+    height: null,
+  });
+  readonly inspectorDock = signal<DockLayout>({
+    left: null,
+    right: 14,
+    top: 14,
+    width: 330,
+    height: null,
+  });
+  private activeDockGesture?: DockGesture;
+  private readonly onDockPointerMove = (event: PointerEvent) => this.updateDockGesture(event);
+  private readonly onDockPointerUp = () => this.endDockGesture();
   private readonly categoryState = new Set<string>([
     'data_source',
     'transform',
@@ -943,6 +1062,146 @@ export class WorkflowEditorPage implements AfterViewInit, OnDestroy {
     return this.bindingNodes().every((node) => Boolean(this.bindings.get(node.id)));
   });
 
+  private readonly dockStorageKey = 'smart-water.workflow-editor.docks';
+
+  private layoutElement(): HTMLElement | null {
+    return this.editorHost?.nativeElement.closest('.layout') as HTMLElement | null;
+  }
+
+  private dockState(kind: DockKind): DockLayout {
+    return kind === 'catalog' ? this.catalogDock() : this.inspectorDock();
+  }
+
+  private setDockState(kind: DockKind, state: DockLayout): void {
+    if (kind === 'catalog') this.catalogDock.set(state);
+    else this.inspectorDock.set(state);
+  }
+
+  private clamp(value: number, min: number, max: number): number {
+    return Math.max(min, Math.min(max, value));
+  }
+
+  startDockDrag(event: PointerEvent, kind: DockKind): void {
+    if (event.button !== 0) return;
+    const layout = this.layoutElement();
+    const dock = (event.currentTarget as HTMLElement | null)?.closest('.dock');
+    if (!layout || !dock) return;
+    const layoutRect = layout.getBoundingClientRect();
+    const dockRect = dock.getBoundingClientRect();
+    this.activeDockGesture = {
+      kind,
+      mode: 'drag',
+      startX: event.clientX,
+      startY: event.clientY,
+      left: dockRect.left - layoutRect.left,
+      top: dockRect.top - layoutRect.top,
+      width: dockRect.width,
+      height: dockRect.height,
+      layoutWidth: layoutRect.width,
+      layoutHeight: layoutRect.height,
+    };
+    event.preventDefault();
+    window.addEventListener('pointermove', this.onDockPointerMove);
+    window.addEventListener('pointerup', this.onDockPointerUp, { once: true });
+  }
+
+  startDockResize(event: PointerEvent, kind: DockKind): void {
+    if (event.button !== 0) return;
+    const layout = this.layoutElement();
+    const dock = (event.currentTarget as HTMLElement | null)?.closest('.dock');
+    if (!layout || !dock) return;
+    const layoutRect = layout.getBoundingClientRect();
+    const dockRect = dock.getBoundingClientRect();
+    this.activeDockGesture = {
+      kind,
+      mode: 'resize',
+      startX: event.clientX,
+      startY: event.clientY,
+      left: dockRect.left - layoutRect.left,
+      top: dockRect.top - layoutRect.top,
+      width: dockRect.width,
+      height: dockRect.height,
+      layoutWidth: layoutRect.width,
+      layoutHeight: layoutRect.height,
+    };
+    event.preventDefault();
+    event.stopPropagation();
+    window.addEventListener('pointermove', this.onDockPointerMove);
+    window.addEventListener('pointerup', this.onDockPointerUp, { once: true });
+  }
+
+  private updateDockGesture(event: PointerEvent): void {
+    const gesture = this.activeDockGesture;
+    if (!gesture) return;
+    const dx = event.clientX - gesture.startX;
+    const dy = event.clientY - gesture.startY;
+    const current = this.dockState(gesture.kind);
+    if (gesture.mode === 'drag') {
+      const left = this.clamp(gesture.left + dx, 0, Math.max(0, gesture.layoutWidth - gesture.width));
+      const top = this.clamp(gesture.top + dy, 0, Math.max(0, gesture.layoutHeight - gesture.height));
+      this.setDockState(gesture.kind, { ...current, left, right: null, top });
+      return;
+    }
+    const minWidth = gesture.kind === 'catalog' ? 220 : 260;
+    const width = this.clamp(gesture.width + dx, minWidth, Math.min(640, gesture.layoutWidth - gesture.left - 10));
+    const height = this.clamp(
+      gesture.height + dy,
+      220,
+      Math.max(220, gesture.layoutHeight - gesture.top - 10),
+    );
+    this.setDockState(gesture.kind, { ...current, width, height });
+  }
+
+  private endDockGesture(): void {
+    if (!this.activeDockGesture) return;
+    this.activeDockGesture = undefined;
+    this.saveDockPreferences();
+  }
+
+  private saveDockPreferences(): void {
+    if (typeof window === 'undefined') return;
+    try {
+      window.localStorage.setItem(
+        this.dockStorageKey,
+        JSON.stringify({
+          catalog: this.catalogDock(),
+          inspector: this.inspectorDock(),
+          catalogCollapsed: this.catalogCollapsed(),
+          inspectorCollapsed: this.inspectorCollapsed(),
+        }),
+      );
+    } catch {
+      // Layout preferences are optional and must never block editing.
+    }
+  }
+
+  private restoreDockPreferences(): void {
+    try {
+      const raw = window.localStorage.getItem(this.dockStorageKey);
+      if (!raw) return;
+      const value = JSON.parse(raw) as Record<string, unknown>;
+      const valid = (item: unknown): item is DockLayout => {
+        if (!item || typeof item !== 'object') return false;
+        const candidate = item as Record<string, unknown>;
+        return (
+          (candidate['left'] === null || typeof candidate['left'] === 'number') &&
+          (candidate['right'] === null || typeof candidate['right'] === 'number') &&
+          typeof candidate['top'] === 'number' &&
+          typeof candidate['width'] === 'number' &&
+          (candidate['height'] === null || typeof candidate['height'] === 'number')
+        );
+      };
+      if (valid(value['catalog'])) this.catalogDock.set(value['catalog']);
+      if (valid(value['inspector'])) this.inspectorDock.set(value['inspector']);
+      if (typeof value['catalogCollapsed'] === 'boolean')
+        this.catalogCollapsed.set(value['catalogCollapsed']);
+      if (typeof value['inspectorCollapsed'] === 'boolean')
+        this.inspectorCollapsed.set(value['inspectorCollapsed']);
+    } catch {
+      // Ignore malformed browser preferences and use the defaults.
+    }
+  }
+
   isCategoryOpen(category: string): boolean {
     return Boolean(this.search.trim()) || this.categoryState.has(category);
   }
@@ -953,7 +1212,10 @@ export class WorkflowEditorPage implements AfterViewInit, OnDestroy {
   }
 
   constructor() {
-    if (typeof window !== 'undefined') window.addEventListener('beforeunload', this.beforeUnload);
+    if (typeof window !== 'undefined') {
+      window.addEventListener('beforeunload', this.beforeUnload);
+      this.restoreDockPreferences();
+    }
     forkJoin({
       catalog: this.api.get<Definition[]>('/api/v1/node-definitions'),
       template: this.api.get<{ graph: Graph }>('/api/v1/workflows/templates/s01-leakage'),
@@ -985,8 +1247,11 @@ export class WorkflowEditorPage implements AfterViewInit, OnDestroy {
 
   ngOnDestroy(): void {
     if (this.autosaveTimer) clearTimeout(this.autosaveTimer);
-    if (typeof window !== 'undefined')
+    if (typeof window !== 'undefined') {
       window.removeEventListener('beforeunload', this.beforeUnload);
+      window.removeEventListener('pointermove', this.onDockPointerMove);
+      window.removeEventListener('pointerup', this.onDockPointerUp);
+    }
     this.subscriptions.forEach((item) => item.unsubscribe());
     this.resizeObserver?.disconnect();
     this.reteArea?.destroy();
