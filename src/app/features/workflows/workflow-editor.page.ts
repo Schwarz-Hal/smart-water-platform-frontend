@@ -706,6 +706,19 @@ interface Graph {
       width: 330px;
       box-sizing: border-box;
     }
+    .inspector.collapsed {
+      width: 42px;
+      padding: 7px;
+      overflow: hidden;
+    }
+    .inspector:not(.collapsed) .dock-toggle {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+    }
+    .inspector:not(.collapsed) .heading {
+      padding-left: 32px;
+    }
     .dock-toggle {
       width: 28px;
       height: 28px;
