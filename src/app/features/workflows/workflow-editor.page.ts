@@ -65,11 +65,21 @@ interface Edge {
   source: { node_id: string; port: string };
   target: { node_id: string; port: string };
 }
+interface StoredBinding {
+  dataset_asset_id: number;
+  dataset_version_id: number;
+  monitor_point_id: number;
+  metric_code: string;
+  value_source: 'raw' | 'processed';
+  start: string | null;
+  end: string | null;
+}
 interface Graph {
   contract_version: string;
   nodes: Record<string, unknown>[];
   edges: Edge[];
   outputs: Array<{ node_id: string; port: string }>;
+  bindings?: Record<string, StoredBinding>;
 }
 
 type DockKind = 'catalog' | 'inspector';
@@ -1049,7 +1059,7 @@ export class WorkflowEditorPage implements AfterViewInit, OnDestroy {
   });
   edges: Edge[] = [];
   graphOutputs: Array<{ node_id: string; port: string }> = [];
-  bindings = new Map<string, Record<string, unknown>>();
+  bindings = new Map<string, StoredBinding>();
   private readonly bindingSelections = new Map<string, DataAssetSelection>();
   private readonly bindingRevision = signal(0);
   private reteEditor: any;
@@ -1323,6 +1333,14 @@ export class WorkflowEditorPage implements AfterViewInit, OnDestroy {
   loadGraph(graph: Graph): void {
     this.edges = [...(graph.edges || [])];
     this.graphOutputs = [...(graph.outputs || [])];
+    this.bindings.clear();
+    this.bindingSelections.clear();
+    for (const [nodeId, binding] of Object.entries(graph.bindings || {})) {
+      if (!binding || !Number.isInteger(Number(binding.dataset_version_id))) continue;
+      this.bindings.set(nodeId, { ...binding });
+      this.bindingSelections.set(nodeId, this.selectionHint(binding));
+    }
+    this.bindingRevision.update((value) => value + 1);
     this.nodes.set(
       (graph.nodes || []).map((raw, index) => {
         const ui = (raw['ui'] || {}) as Record<string, unknown>;
@@ -1629,6 +1647,7 @@ export class WorkflowEditorPage implements AfterViewInit, OnDestroy {
       })),
       edges: this.edges,
       outputs: this.graphOutputs,
+      bindings: Object.fromEntries(this.bindings.entries()),
     };
   }
   private pushHistory(graph: Graph): void {
@@ -1661,22 +1680,54 @@ export class WorkflowEditorPage implements AfterViewInit, OnDestroy {
     return nodeId.length > 8 ? nodeId.slice(0, 8) : nodeId;
   }
   setBinding(nodeId: string, selection: DataAssetSelection | null): void {
+    const previous = this.bindings.get(nodeId) as StoredBinding | undefined;
     if (!selection?.channel) {
-      this.bindings.delete(nodeId);
       this.bindingSelections.delete(nodeId);
+      if (!previous) return;
+      this.bindings.delete(nodeId);
       this.bindingRevision.update((value) => value + 1);
+      this.markDirty();
       return;
     }
-    this.bindingSelections.set(nodeId, selection);
-    this.bindings.set(nodeId, {
+    const binding: StoredBinding = {
+      dataset_asset_id: selection.asset.id,
       dataset_version_id: selection.version.id,
       monitor_point_id: selection.channel.monitor_point_id,
       metric_code: selection.channel.metric_code,
       value_source: selection.value_source,
       start: selection.channel.time_start,
       end: selection.channel.time_end,
-    });
+    };
+    this.bindingSelections.set(nodeId, selection);
+    if (previous && this.sameBinding(previous, binding)) return;
+    this.bindings.set(nodeId, binding);
     this.bindingRevision.update((value) => value + 1);
+    this.markDirty();
+  }
+
+  private sameBinding(left: StoredBinding, right: StoredBinding): boolean {
+    return (
+      left.dataset_asset_id === right.dataset_asset_id &&
+      left.dataset_version_id === right.dataset_version_id &&
+      left.monitor_point_id === right.monitor_point_id &&
+      left.metric_code === right.metric_code &&
+      left.value_source === right.value_source &&
+      left.start === right.start &&
+      left.end === right.end
+    );
+  }
+
+  private selectionHint(binding: StoredBinding): DataAssetSelection {
+    return {
+      asset: { id: binding.dataset_asset_id },
+      version: { id: binding.dataset_version_id },
+      channel: {
+        monitor_point_id: binding.monitor_point_id,
+        metric_code: binding.metric_code,
+      },
+      channels: [],
+      value_source: binding.value_source,
+    } as unknown as DataAssetSelection;
   }
   validate(): void {
     if (!this.workflowId()) {
