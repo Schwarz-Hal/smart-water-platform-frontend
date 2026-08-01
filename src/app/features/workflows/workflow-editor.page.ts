@@ -14,14 +14,14 @@ import { ActivatedRoute, Router } from '@angular/router';
 import { MatButtonModule } from '@angular/material/button';
 import { MatCardModule } from '@angular/material/card';
 import { MatSliderModule } from '@angular/material/slider';
-import { forkJoin, Subscription } from 'rxjs';
+import { Subscription } from 'rxjs';
 import { NodeEditor, ClassicPreset } from 'rete';
 import { AreaExtensions, AreaPlugin } from 'rete-area-plugin';
 import { ConnectionPlugin, Presets as ConnectionPresets } from 'rete-connection-plugin';
 import { AngularPlugin, Presets as AngularPresets } from 'rete-angular-plugin/21';
 
 import { DataAssetPickerComponent } from '../../shared/components/data-asset-picker.component';
-import { DataAssetSelection } from '../../core/models/api.models';
+import { DataAssetSelection, OperatorSummary } from '../../core/models/api.models';
 import { ApiClient } from '../../core/services/api-client.service';
 import { NotificationService } from '../../core/services/notification.service';
 import { AuthService } from '../../core/services/auth.service';
@@ -1216,30 +1216,37 @@ export class WorkflowEditorPage implements AfterViewInit, OnDestroy {
       window.addEventListener('beforeunload', this.beforeUnload);
       this.restoreDockPreferences();
     }
-    forkJoin({
-      catalog: this.api.get<Definition[]>('/api/v1/node-definitions'),
-      template: this.api.get<{ graph: Graph }>('/api/v1/workflows/templates/s01-leakage'),
-    }).subscribe({
-      next: ({ catalog, template }) => {
+    this.api.get<{ items: OperatorSummary[] }>('/api/v1/operators', { page: 1, page_size: 100 }).subscribe({
+      next: ({ items }) => {
+        const catalog = (items || []).filter((item) => item.status === 'active' && item.available && item.active_version?.available).map((item) => this.operatorDefinition(item)).filter((item): item is Definition => item !== null);
         this.definitions.set(catalog);
         this.definitionByCode = new Map(catalog.map((item) => [item.node_code, item]));
         const workflowId = this.route?.snapshot.paramMap.get('workflowId');
-        if (workflowId) {
-          this.workflowId.set(Number(workflowId));
-          this.api.get<Record<string, unknown>>('/api/v1/workflows/' + workflowId).subscribe({
-            next: (workflow) => {
-              this.draftRevision.set(Number(workflow['draft_revision'] || 1));
-              this.loadGraph((workflow['draft_graph'] as Graph) || template.graph);
-              this.checkRecovery(workflow);
-            },
-            error: () => this.loadGraph(template.graph),
-          });
-        } else {
-          this.loadGraph(template.graph);
-        }
+        if (!workflowId) { this.showError('工作流草稿不存在，请先从工作流入口创建草稿。'); return; }
+        this.workflowId.set(Number(workflowId));
+        this.api.get<Record<string, unknown>>('/api/v1/workflows/' + workflowId).subscribe({
+          next: (workflow) => { this.draftRevision.set(Number(workflow['draft_revision'] || 1)); this.loadGraph(workflow['draft_graph'] as Graph); this.checkRecovery(workflow); },
+          error: () => this.showError('工作流草稿加载失败，可能已被删除或你没有访问权限。'),
+        });
       },
-      error: () => this.showError('节点目录或 S01 模板加载失败，请检查工作流权限。'),
+      error: () => this.showError('算子目录加载失败，请检查工作流权限。'),
     });
+  }
+  private operatorDefinition(item: OperatorSummary): Definition | null {
+    const version = item.active_version;
+    if (!version) return null;
+    return {
+      node_code: item.code,
+      version: version.version,
+      node_name: item.name,
+      description: item.description,
+      category: item.category,
+      runtime_type: version.runtime_type,
+      input_ports: version.input_ports as unknown as Port[],
+      output_ports: version.output_ports as unknown as Port[],
+      parameter_schema: version.parameter_schema as Definition['parameter_schema'],
+      ui_schema: version.ui_schema as Definition['ui_schema'],
+    };
   }
   ngAfterViewInit(): void {
     if (this.nodes().length) void this.initializeRete().then(() => this.observeResize());
