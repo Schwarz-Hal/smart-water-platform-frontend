@@ -334,7 +334,10 @@ interface DockGesture {
             <p class="help">仅配置当前选中的数据通道。</p>
             <div class="binding">
               <b>{{ binding.label }}</b>
-              <app-data-asset-picker (selectionChange)="setBinding(binding.id, $event)" />
+              <app-data-asset-picker
+                [selection]="binding.selection"
+                (selectionChange)="setBinding(binding.id, $event)"
+              />
             </div>
           </section>
         }
@@ -1030,6 +1033,7 @@ export class WorkflowEditorPage implements AfterViewInit, OnDestroy {
   edges: Edge[] = [];
   graphOutputs: Array<{ node_id: string; port: string }> = [];
   bindings = new Map<string, Record<string, unknown>>();
+  private readonly bindingSelections = new Map<string, DataAssetSelection>();
   private readonly bindingRevision = signal(0);
   private reteEditor: any;
   private reteArea: any;
@@ -1049,9 +1053,14 @@ export class WorkflowEditorPage implements AfterViewInit, OnDestroy {
     () => this.nodes().find((item) => item.id === this.selectedId()) ?? null,
   );
   readonly selectedDatasetChannel = computed(() => {
+    this.bindingRevision();
     const node = this.selectedNode();
     if (!node || node.node_code !== 'dataset_channel_v1') return null;
-    return { id: node.id, label: node.definition?.node_name || node.node_code };
+    return {
+      id: node.id,
+      label: node.definition?.node_name || node.node_code,
+      selection: this.bindingSelections.get(node.id) ?? null,
+    };
   });
   readonly bindingNodes = computed(() =>
     this.nodes()
@@ -1591,9 +1600,11 @@ export class WorkflowEditorPage implements AfterViewInit, OnDestroy {
   setBinding(nodeId: string, selection: DataAssetSelection | null): void {
     if (!selection?.channel) {
       this.bindings.delete(nodeId);
+      this.bindingSelections.delete(nodeId);
       this.bindingRevision.update((value) => value + 1);
       return;
     }
+    this.bindingSelections.set(nodeId, selection);
     this.bindings.set(nodeId, {
       dataset_version_id: selection.version.id,
       monitor_point_id: selection.channel.monitor_point_id,

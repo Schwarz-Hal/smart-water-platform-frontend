@@ -1,4 +1,13 @@
-import { Component, EventEmitter, OnInit, Output, computed, inject, signal } from '@angular/core';
+import {
+  Component,
+  EventEmitter,
+  Input,
+  OnInit,
+  Output,
+  computed,
+  inject,
+  signal,
+} from '@angular/core';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatSelectModule } from '@angular/material/select';
 
@@ -135,6 +144,7 @@ export class DataAssetPickerComponent implements OnInit {
   private readonly api = inject(ApiClient);
   private readonly notifications = inject(NotificationService);
 
+  @Input() selection: DataAssetSelection | null = null;
   @Output() readonly contextChange = new EventEmitter<DataAssetContext | null>();
   @Output() readonly selectionChange = new EventEmitter<DataAssetSelection | null>();
 
@@ -171,8 +181,9 @@ export class DataAssetPickerComponent implements OnInit {
     this.api.get<DataAsset[]>('/api/v1/datasets').subscribe({
       next: (assets) => {
         this.assets.set(assets);
-        const selected = assets.find((asset) => asset.id === this.assetId()) ?? assets[0] ?? null;
-        if (selected) this.selectAsset(selected.id);
+        const preferredAssetId = this.selection?.asset.id ?? this.assetId();
+        const selected = assets.find((asset) => asset.id === preferredAssetId) ?? assets[0] ?? null;
+        if (selected) this.selectAsset(selected.id, this.selection);
         else this.clearSelection();
         this.loadingAssets.set(false);
       },
@@ -184,7 +195,7 @@ export class DataAssetPickerComponent implements OnInit {
     });
   }
 
-  selectAsset(value: unknown): void {
+  selectAsset(value: unknown, preferred: DataAssetSelection | null = null): void {
     const id = this.asPositiveInteger(value);
     if (!id) return;
     this.assetId.set(id);
@@ -195,8 +206,11 @@ export class DataAssetPickerComponent implements OnInit {
       next: (versions) => {
         this.versions.set(versions);
         const selected =
-          versions.find((version) => version.status === 'ready') ?? versions[0] ?? null;
-        if (selected) this.selectVersion(selected.id);
+          versions.find((version) => version.id === preferred?.version.id) ??
+          versions.find((version) => version.status === 'ready') ??
+          versions[0] ??
+          null;
+        if (selected) this.selectVersion(selected.id, preferred);
         else this.clearVersion();
         this.loadingVersions.set(false);
       },
@@ -208,7 +222,7 @@ export class DataAssetPickerComponent implements OnInit {
     });
   }
 
-  selectVersion(value: unknown): void {
+  selectVersion(value: unknown, preferred: DataAssetSelection | null = null): void {
     const id = this.asPositiveInteger(value);
     if (!id) return;
     this.versionId.set(id);
@@ -216,10 +230,26 @@ export class DataAssetPickerComponent implements OnInit {
     this.api.get<DatasetChannel[]>(`/api/v1/dataset-versions/${id}/channels`).subscribe({
       next: (channels) => {
         this.channels.set(channels);
-        const first = channels[0] ?? null;
-        this.pointId.set(first?.monitor_point_id ?? null);
-        this.metricCode.set(first?.metric_code ?? null);
-        this.valueSource.set(first?.processed_available ? 'processed' : 'raw');
+        const selected =
+          channels.find(
+            (channel) =>
+              channel.monitor_point_id === preferred?.channel?.monitor_point_id &&
+              channel.metric_code === preferred?.channel?.metric_code,
+          ) ??
+          channels[0] ??
+          null;
+        this.pointId.set(selected?.monitor_point_id ?? null);
+        this.metricCode.set(selected?.metric_code ?? null);
+        const preferredSource = preferred?.value_source;
+        this.valueSource.set(
+          preferredSource === 'processed' && selected?.processed_available
+            ? 'processed'
+            : preferredSource === 'raw' && selected?.raw_available
+              ? 'raw'
+              : selected?.processed_available
+                ? 'processed'
+                : 'raw',
+        );
         this.loadingChannels.set(false);
         this.emitSelection();
       },
@@ -249,16 +279,6 @@ export class DataAssetPickerComponent implements OnInit {
   selectValueSource(value: unknown): void {
     if (value === 'raw' || value === 'processed') this.valueSource.set(value);
     this.emitSelection();
-  }
-
-  private restoreSelection(selection: DataAssetSelection): void {
-    this.assetId.set(selection.asset.id);
-    this.versionId.set(selection.version.id);
-    this.versions.set([selection.version]);
-    this.channels.set(selection.channels);
-    this.pointId.set(selection.channel?.monitor_point_id ?? null);
-    this.metricCode.set(selection.channel?.metric_code ?? null);
-    this.valueSource.set(selection.value_source);
   }
 
   private emitSelection(): void {

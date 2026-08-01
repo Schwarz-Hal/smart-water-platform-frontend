@@ -2,7 +2,12 @@ import { TestBed } from '@angular/core/testing';
 import { provideNoopAnimations } from '@angular/platform-browser/animations';
 import { of } from 'rxjs';
 
-import { DataAsset, DatasetChannel, DatasetVersion } from '../../core/models/api.models';
+import {
+  DataAsset,
+  DataAssetSelection,
+  DatasetChannel,
+  DatasetVersion,
+} from '../../core/models/api.models';
 import { ApiClient } from '../../core/services/api-client.service';
 import { NotificationService } from '../../core/services/notification.service';
 import { DataAssetPickerComponent } from './data-asset-picker.component';
@@ -94,6 +99,26 @@ describe('DataAssetPickerComponent', () => {
 
     picker.selectPoint(42);
 
+    expect(picker.selectedChannel()?.metric_code).toBe('pressure');
+    expect(picker.valueSource()).toBe('raw');
+  });
+
+  it('restores the previously selected channel when the picker is recreated', () => {
+    const fixture = TestBed.createComponent(DataAssetPickerComponent);
+    const selection: DataAssetSelection = {
+      asset,
+      version,
+      channels,
+      channel: channels[1],
+      value_source: 'raw',
+    };
+    fixture.componentRef.setInput('selection', selection);
+    fixture.detectChanges();
+    const picker = fixture.componentInstance;
+
+    expect(picker.assetId()).toBe(asset.id);
+    expect(picker.versionId()).toBe(version.id);
+    expect(picker.selectedChannel()?.monitor_point_id).toBe(42);
     expect(picker.selectedChannel()?.metric_code).toBe('pressure');
     expect(picker.valueSource()).toBe('raw');
   });
