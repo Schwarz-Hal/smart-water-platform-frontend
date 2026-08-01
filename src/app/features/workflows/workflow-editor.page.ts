@@ -1037,6 +1037,7 @@ export class WorkflowEditorPage implements AfterViewInit, OnDestroy {
   private resizeObserver?: ResizeObserver;
   private reteNodes = new Map<string, any>();
   private definitionByCode = new Map<string, Definition>();
+  private hydratingRete = false;
   private subscriptions: Subscription[] = [];
   readonly filteredDefinitions = computed(() => {
     const term = this.search.trim().toLowerCase();
@@ -1316,9 +1317,14 @@ export class WorkflowEditorPage implements AfterViewInit, OnDestroy {
     this.reteEditor.use(this.reteArea);
     this.reteArea.use(render as any);
     this.reteArea.use(connection);
-    for (const item of this.nodes()) await this.addReteNode(item);
-    for (const edge of this.edges) await this.addReteConnection(edge);
-    await AreaExtensions.zoomAt(this.reteArea, this.reteEditor.getNodes());
+    this.hydratingRete = true;
+    try {
+      for (const item of this.nodes()) await this.addReteNode(item);
+      for (const edge of this.edges) await this.addReteConnection(edge);
+      await AreaExtensions.zoomAt(this.reteArea, this.reteEditor.getNodes());
+    } finally {
+      this.hydratingRete = false;
+    }
   }
   private observeResize(): void {
     const host = this.editorHost?.nativeElement;
@@ -1339,7 +1345,7 @@ export class WorkflowEditorPage implements AfterViewInit, OnDestroy {
         if (!source || !target || source === target || this.wouldCreateCycle(source, target))
           return;
       }
-      if (context.type === 'connectioncreated' || context.type === 'connectionremoved') {
+      if (!this.hydratingRete && (context.type === 'connectioncreated' || context.type === 'connectionremoved')) {
         this.syncEdgesFromRete();
       }
       return context;
@@ -1433,17 +1439,17 @@ export class WorkflowEditorPage implements AfterViewInit, OnDestroy {
     (node as any).__backendId = item.id;
     (node as any).__definition = def;
   }
-  private async addReteConnection(edge: Edge): Promise<void> {
+  private async addReteConnection(edge: Edge): Promise<boolean> {
     const source = this.reteNodes.get(edge.source.node_id);
     const target = this.reteNodes.get(edge.target.node_id);
-    if (!source || !target) return;
+    if (!source || !target || !source.outputs?.[edge.source.port] || !target.inputs?.[edge.target.port]) return false;
     const connection = new ClassicPreset.Connection(
       source,
       edge.source.port,
       target,
       edge.target.port,
     );
-    await this.reteEditor.addConnection(connection as any);
+    return Boolean(await this.reteEditor.addConnection(connection as any));
   }
   onCatalogDragStart(event: DragEvent, definition: Definition): void {
     event.dataTransfer?.setData('application/x-node-code', definition.node_code);
