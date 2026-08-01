@@ -1,0 +1,111 @@
+@import '@angular/material/prebuilt-themes/azure-blue.css';
+
+:root {
+  color-scheme: light;
+  font-family: Inter, 'Microsoft YaHei UI', 'Microsoft YaHei', system-ui, sans-serif;
+  background: #f5f7fb;
+  color: #172033;
+}
+
+* {
+  box-sizing: border-box;
+  min-width: 0;
+}
+
+html,
+body {
+  height: 100%;
+  margin: 0;
+}
+body {
+  background: #f5f7fb;
+}
+button,
+input,
+textarea,
+select {
+  font: inherit;
+}
+
+.page {
+  max-width: 1440px;
+  margin: 0 auto;
+  padding: 24px;
+}
+.page-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+.page-title h1 {
+  font-size: 26px;
+  margin: 0;
+}
+.muted {
+  color: #5f6b82;
+}
+.card-grid {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+}
+.surface {
+  background: #fff;
+  border: 1px solid #e2e7f0;
+  border-radius: 12px;
+  padding: 18px;
+}
+.empty {
+  padding: 32px;
+  text-align: center;
+  color: #5f6b82;
+}
+.form-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+.full-width {
+  width: 100%;
+}
+.actions {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.table-wrap {
+  overflow: auto;
+}
+table {
+  width: 100%;
+}
+
+button,
+.mat-mdc-button,
+.mat-mdc-unelevated-button,
+.mat-mdc-outlined-button {
+  white-space: normal;
+  text-align: center;
+}
+
+h1,
+h2,
+h3,
+p,
+small,
+span {
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 720px) {
+  .page {
+    padding: 16px;
+  }
+  .page-title {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}
