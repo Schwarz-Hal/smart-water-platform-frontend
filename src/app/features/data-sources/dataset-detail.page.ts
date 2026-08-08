@@ -1,0 +1,267 @@
+import { DatePipe, DecimalPipe, JsonPipe } from '@angular/common';
+import { Component, inject, signal } from '@angular/core';
+import { MatButtonModule } from '@angular/material/button';
+import { ActivatedRoute, RouterLink } from '@angular/router';
+
+import {
+  DataAsset,
+  DataQualityReport,
+  DatasetChannel,
+  DatasetLineage,
+  DatasetVersion,
+} from '../../core/models/api.models';
+import { ApiClient } from '../../core/services/api-client.service';
+import { NotificationService } from '../../core/services/notification.service';
+import { StatusChipComponent } from '../../shared/components/status-chip.component';
+
+@Component({
+  selector: 'app-dataset-detail-page',
+  imports: [DatePipe, DecimalPipe, JsonPipe, MatButtonModule, RouterLink, StatusChipComponent],
+  template: `
+    @if (asset(); as item) {
+      <header class="head">
+        <div>
+          <p class="eyebrow">数据资产</p>
+          <h1>{{ item.name }}</h1>
+          <p>{{ item.description || '暂无说明' }}</p>
+        </div>
+        <div class="actions">
+          <a mat-stroked-button routerLink="/data-sources">返回</a
+          ><a
+            mat-flat-button
+            [routerLink]="['/workflows/new']"
+            [queryParams]="{ template: 'timeseries_governance_basic' }"
+            >创建治理工作流</a
+          >
+        </div>
+      </header>
+      <section class="summary">
+        <div><small>状态</small><app-status-chip [status]="item.status || 'active'" /></div>
+        <div>
+          <small>版本</small><strong>{{ item.version_count || versions().length }}</strong>
+        </div>
+        <div>
+          <small>通道</small><strong>{{ item.channel_count || channels().length }}</strong>
+        </div>
+        <div>
+          <small>最新质量</small
+          ><strong>{{
+            item.latest_quality
+              ? item.latest_quality.grade + ' · ' + item.latest_quality.score.toFixed(1)
+              : '尚未评估'
+          }}</strong>
+        </div>
+      </section>
+      <section class="layout">
+        <div class="panel">
+          <h2>版本历史</h2>
+          @for (version of versions(); track version.id) {
+            <button
+              class="version"
+              [class.active]="selectedVersion()?.id === version.id"
+              (click)="selectVersion(version)"
+            >
+              <b>{{ version.version_code }}</b
+              ><span
+                >{{ version.version_kind || 'imported' }} ·
+                {{ version.storage_backend || 'mysql' }} · {{ version.record_count }} 条</span
+              ><small>{{ version.created_at | date: 'yyyy-MM-dd HH:mm' }}</small>
+            </button>
+          }
+        </div>
+        <div class="panel grow">
+          @if (selectedVersion(); as version) {
+            <h2>版本详情</h2>
+            <p>{{ version.version_note || '无版本说明' }}</p>
+            <h3>数据血缘</h3>
+            @if (lineage(); as value) {
+              <p>
+                来源：{{ value.ancestors.length ? value.ancestors[0].version_code : '原始导入' }}
+              </p>
+              <p>创建任务：{{ value.created_by_task_id || '—' }}</p>
+            }
+            <h3>通道</h3>
+            <div class="channels">
+              @for (channel of channels(); track channel.monitor_point_id + channel.metric_code) {
+                <div>
+                  <b>{{ channel.point_name }} · {{ channel.metric_name }}</b
+                  ><span>{{ channel.record_count }} 条 · {{ channel.unit || '无单位' }}</span>
+                </div>
+              }
+            </div>
+            <h3>质量报告</h3>
+            @for (report of reports(); track report.id) {
+              <article class="report">
+                <strong class="grade">{{ report.grade }}</strong>
+                <div>
+                  <b>{{ report.score | number: '1.1-1' }} 分</b>
+                  <p>{{ report.created_at | date: 'yyyy-MM-dd HH:mm' }}</p>
+                </div>
+                <pre>{{ report.dimensions | json }}</pre>
+              </article>
+            } @empty {
+              <p class="muted">该版本尚无质量报告。</p>
+            }
+          }
+        </div>
+      </section>
+    } @else {
+      <div class="empty">正在读取数据资产…</div>
+    }
+  `,
+  styles: `
+    .head,
+    .actions,
+    .summary,
+    .layout,
+    .report {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+    .head {
+      justify-content: space-between;
+    }
+    .eyebrow {
+      color: #0f4c81;
+      font-weight: 800;
+      margin-bottom: 4px;
+    }
+    h1 {
+      margin: 0;
+    }
+    .summary {
+      margin: 20px 0;
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+    }
+    .summary > div,
+    .panel {
+      background: #fff;
+      border: 1px solid #e2e8f0;
+      border-radius: 14px;
+      padding: 18px;
+    }
+    .summary small,
+    .version span,
+    .version small,
+    .muted {
+      display: block;
+      color: #64748b;
+    }
+    .summary strong {
+      display: block;
+      font-size: 22px;
+      margin-top: 8px;
+    }
+    .layout {
+      align-items: flex-start;
+    }
+    .panel {
+      width: 320px;
+    }
+    .grow {
+      width: auto;
+      flex: 1;
+    }
+    .version {
+      display: block;
+      width: 100%;
+      text-align: left;
+      padding: 12px;
+      margin: 8px 0;
+      border: 1px solid #e2e8f0;
+      background: #fff;
+      border-radius: 10px;
+    }
+    .version.active {
+      border-color: #0f4c81;
+      background: #eff6ff;
+    }
+    .channels {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+    }
+    .channels div {
+      padding: 12px;
+      background: #f8fafc;
+      border-radius: 10px;
+    }
+    .channels span {
+      display: block;
+      color: #64748b;
+      margin-top: 4px;
+    }
+    .report {
+      padding: 12px;
+      border-top: 1px solid #e2e8f0;
+    }
+    .grade {
+      font-size: 30px;
+      color: #0f4c81;
+    }
+    .report pre {
+      margin-left: auto;
+      max-width: 45%;
+      overflow: auto;
+    }
+    .empty {
+      padding: 40px;
+      text-align: center;
+    }
+    @media (max-width: 850px) {
+      .head,
+      .layout {
+        align-items: flex-start;
+        flex-direction: column;
+      }
+      .summary {
+        grid-template-columns: 1fr 1fr;
+      }
+      .panel {
+        width: auto;
+        align-self: stretch;
+      }
+      .channels {
+        grid-template-columns: 1fr;
+      }
+    }
+  `,
+})
+export class DatasetDetailPage {
+  private readonly api = inject(ApiClient);
+  private readonly notifications = inject(NotificationService);
+  readonly datasetId = Number(inject(ActivatedRoute).snapshot.paramMap.get('datasetId'));
+  readonly asset = signal<DataAsset | null>(null);
+  readonly versions = signal<DatasetVersion[]>([]);
+  readonly selectedVersion = signal<DatasetVersion | null>(null);
+  readonly channels = signal<DatasetChannel[]>([]);
+  readonly reports = signal<DataQualityReport[]>([]);
+  readonly lineage = signal<DatasetLineage | null>(null);
+  constructor() {
+    this.api.get<DataAsset>(`/api/v1/datasets/${this.datasetId}`).subscribe({
+      next: (value) => this.asset.set(value),
+      error: (error) => this.notifications.error(error, '无法读取数据资产。'),
+    });
+    this.api.get<DatasetVersion[]>(`/api/v1/datasets/${this.datasetId}/versions`).subscribe({
+      next: (items) => {
+        this.versions.set(items);
+        if (items[0]) this.selectVersion(items[0]);
+      },
+      error: (error) => this.notifications.error(error, '无法读取数据版本。'),
+    });
+  }
+  selectVersion(version: DatasetVersion): void {
+    this.selectedVersion.set(version);
+    this.api
+      .get<DatasetChannel[]>(`/api/v1/dataset-versions/${version.id}/channels`)
+      .subscribe((value) => this.channels.set(value));
+    this.api
+      .get<DataQualityReport[]>(`/api/v1/dataset-versions/${version.id}/quality-reports`)
+      .subscribe((value) => this.reports.set(value));
+    this.api
+      .get<DatasetLineage>(`/api/v1/dataset-versions/${version.id}/lineage`)
+      .subscribe((value) => this.lineage.set(value));
+  }
+}

@@ -58,50 +58,54 @@ import { NotificationService } from '../../core/services/notification.service';
           }
         </mat-select>
       </mat-form-field>
-      <mat-form-field appearance="outline">
-        <mat-label>点位</mat-label>
-        <mat-select
-          [value]="pointId()"
-          [disabled]="!channels().length"
-          (selectionChange)="selectPoint($event.value)"
-        >
-          @for (point of points(); track point.monitor_point_id) {
-            <mat-option [value]="point.monitor_point_id">{{ point.point_name }}</mat-option>
-          }
-        </mat-select>
-      </mat-form-field>
-      <mat-form-field appearance="outline">
-        <mat-label>指标通道</mat-label>
-        <mat-select
-          [value]="metricCode()"
-          [disabled]="!pointId()"
-          (selectionChange)="selectMetric($event.value)"
-        >
-          @for (channel of pointChannels(); track channel.metric_code) {
-            <mat-option [value]="channel.metric_code"
-              >{{ channel.metric_name }}（{{ channel.unit || '无单位' }}）</mat-option
-            >
-          }
-        </mat-select>
-      </mat-form-field>
-      <mat-form-field appearance="outline">
-        <mat-label>值来源</mat-label>
-        <mat-select
-          [value]="valueSource()"
-          [disabled]="!selectedChannel()"
-          (selectionChange)="selectValueSource($event.value)"
-        >
-          <mat-option value="processed" [disabled]="!selectedChannel()?.processed_available"
-            >处理/修复值</mat-option
+      @if (channelRequired) {
+        <mat-form-field appearance="outline">
+          <mat-label>点位</mat-label>
+          <mat-select
+            [value]="pointId()"
+            [disabled]="!channels().length"
+            (selectionChange)="selectPoint($event.value)"
           >
-          <mat-option value="raw" [disabled]="!selectedChannel()?.raw_available">原始值</mat-option>
-        </mat-select>
-      </mat-form-field>
-      @if (selectedChannel(); as channel) {
-        <p class="range">
-          {{ channel.record_count }} 条 · {{ channel.time_start || '—' }} 至
-          {{ channel.time_end || '—' }}
-        </p>
+            @for (point of points(); track point.monitor_point_id) {
+              <mat-option [value]="point.monitor_point_id">{{ point.point_name }}</mat-option>
+            }
+          </mat-select>
+        </mat-form-field>
+        <mat-form-field appearance="outline">
+          <mat-label>指标通道</mat-label>
+          <mat-select
+            [value]="metricCode()"
+            [disabled]="!pointId()"
+            (selectionChange)="selectMetric($event.value)"
+          >
+            @for (channel of pointChannels(); track channel.metric_code) {
+              <mat-option [value]="channel.metric_code"
+                >{{ channel.metric_name }}（{{ channel.unit || '无单位' }}）</mat-option
+              >
+            }
+          </mat-select>
+        </mat-form-field>
+        <mat-form-field appearance="outline">
+          <mat-label>值来源</mat-label>
+          <mat-select
+            [value]="valueSource()"
+            [disabled]="!selectedChannel()"
+            (selectionChange)="selectValueSource($event.value)"
+          >
+            <mat-option value="processed" [disabled]="!selectedChannel()?.processed_available"
+              >处理/修复值</mat-option
+            >
+            <mat-option value="raw" [disabled]="!selectedChannel()?.raw_available"
+              >原始值</mat-option
+            >
+          </mat-select>
+        </mat-form-field>
+        @if (selectedChannel(); as channel) {
+          <p class="range">
+            {{ channel.record_count }} 条 · {{ channel.time_start || '—' }} 至
+            {{ channel.time_end || '—' }}
+          </p>
+        }
       }
     </section>
   `,
@@ -149,6 +153,8 @@ export class DataAssetPickerComponent implements OnInit, OnChanges {
   private loadGeneration = 0;
 
   @Input() selection: DataAssetSelection | null = null;
+  /** Whole-dataset workflow nodes only require an asset version, not a channel. */
+  @Input() channelRequired = true;
   @Output() readonly contextChange = new EventEmitter<DataAssetContext | null>();
   @Output() readonly selectionChange = new EventEmitter<DataAssetSelection | null>();
 
@@ -312,7 +318,10 @@ export class DataAssetPickerComponent implements OnInit, OnChanges {
   }
 
   private selectionMatchesCurrentState(selection: DataAssetSelection | null): boolean {
-    if (!selection?.channel) return this.assetId() === null;
+    if (!selection) return this.assetId() === null;
+    if (!this.channelRequired)
+      return this.assetId() === selection.asset.id && this.versionId() === selection.version.id;
+    if (!selection.channel) return false;
     return (
       this.assetId() === selection.asset.id &&
       this.versionId() === selection.version.id &&
@@ -334,7 +343,7 @@ export class DataAssetPickerComponent implements OnInit, OnChanges {
     this.contextChange.emit(context);
     this.selectionChange.emit({
       ...context,
-      channel: this.selectedChannel(),
+      channel: this.channelRequired ? this.selectedChannel() : null,
       value_source: this.valueSource(),
     });
   }

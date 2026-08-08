@@ -68,11 +68,11 @@ interface Edge {
 interface StoredBinding {
   dataset_asset_id: number;
   dataset_version_id: number;
-  monitor_point_id: number;
-  metric_code: string;
-  value_source: 'raw' | 'processed';
-  start: string | null;
-  end: string | null;
+  monitor_point_id?: number;
+  metric_code?: string;
+  value_source?: 'raw' | 'processed';
+  start?: string | null;
+  end?: string | null;
 }
 interface Graph {
   contract_version: string;
@@ -352,15 +352,22 @@ interface DockGesture {
             } @else {
               <div class="empty static">选择节点查看端口和参数。</div>
             }
-            @if (selectedDatasetChannel(); as binding) {
+            @if (selectedDataBinding(); as binding) {
               <section class="binding-panel">
                 <hr />
                 <h3>运行数据绑定</h3>
-                <p class="help">仅配置当前选中的数据通道。</p>
+                <p class="help">
+                  {{
+                    binding.wholeAsset
+                      ? '选择需要治理的完整数据版本。'
+                      : '仅配置当前选中的数据通道。'
+                  }}
+                </p>
                 <div class="binding">
                   <b>{{ binding.label }}</b>
                   <app-data-asset-picker
                     [selection]="binding.selection"
+                    [channelRequired]="!binding.wholeAsset"
                     (selectionChange)="setBinding(binding.id, $event)"
                   />
                 </div>
@@ -1080,19 +1087,20 @@ export class WorkflowEditorPage implements AfterViewInit, OnDestroy {
   readonly selectedNode = computed(
     () => this.nodes().find((item) => item.id === this.selectedId()) ?? null,
   );
-  readonly selectedDatasetChannel = computed(() => {
+  readonly selectedDataBinding = computed(() => {
     this.bindingRevision();
     const node = this.selectedNode();
-    if (!node || node.node_code !== 'dataset_channel_v1') return null;
+    if (!node || !['dataset_channel_v1', 'dataset_asset_v1'].includes(node.node_code)) return null;
     return {
       id: node.id,
       label: node.definition?.node_name || node.node_code,
       selection: this.bindingSelections.get(node.id) ?? null,
+      wholeAsset: node.node_code === 'dataset_asset_v1',
     };
   });
   readonly bindingNodes = computed(() =>
     this.nodes()
-      .filter((node) => node.node_code === 'dataset_channel_v1')
+      .filter((node) => ['dataset_channel_v1', 'dataset_asset_v1'].includes(node.node_code))
       .map((node) => ({ id: node.id, label: node.definition?.node_name || node.node_code })),
   );
   readonly bindingsReady = computed(() => {
@@ -1681,7 +1689,9 @@ export class WorkflowEditorPage implements AfterViewInit, OnDestroy {
   }
   setBinding(nodeId: string, selection: DataAssetSelection | null): void {
     const previous = this.bindings.get(nodeId) as StoredBinding | undefined;
-    if (!selection?.channel) {
+    const wholeAsset =
+      this.nodes().find((node) => node.id === nodeId)?.node_code === 'dataset_asset_v1';
+    if (!selection || (!wholeAsset && !selection.channel)) {
       this.bindingSelections.delete(nodeId);
       if (!previous) return;
       this.bindings.delete(nodeId);
@@ -1689,15 +1699,20 @@ export class WorkflowEditorPage implements AfterViewInit, OnDestroy {
       this.markDirty();
       return;
     }
-    const binding: StoredBinding = {
-      dataset_asset_id: selection.asset.id,
-      dataset_version_id: selection.version.id,
-      monitor_point_id: selection.channel.monitor_point_id,
-      metric_code: selection.channel.metric_code,
-      value_source: selection.value_source,
-      start: selection.channel.time_start,
-      end: selection.channel.time_end,
-    };
+    const binding: StoredBinding = wholeAsset
+      ? {
+          dataset_asset_id: selection.asset.id,
+          dataset_version_id: selection.version.id,
+        }
+      : {
+          dataset_asset_id: selection.asset.id,
+          dataset_version_id: selection.version.id,
+          monitor_point_id: selection.channel!.monitor_point_id,
+          metric_code: selection.channel!.metric_code,
+          value_source: selection.value_source,
+          start: selection.channel!.time_start,
+          end: selection.channel!.time_end,
+        };
     this.bindingSelections.set(nodeId, selection);
     if (previous && this.sameBinding(previous, binding)) return;
     this.bindings.set(nodeId, binding);
@@ -1721,12 +1736,15 @@ export class WorkflowEditorPage implements AfterViewInit, OnDestroy {
     return {
       asset: { id: binding.dataset_asset_id },
       version: { id: binding.dataset_version_id },
-      channel: {
-        monitor_point_id: binding.monitor_point_id,
-        metric_code: binding.metric_code,
-      },
+      channel:
+        binding.monitor_point_id && binding.metric_code
+          ? {
+              monitor_point_id: binding.monitor_point_id,
+              metric_code: binding.metric_code,
+            }
+          : null,
       channels: [],
-      value_source: binding.value_source,
+      value_source: binding.value_source ?? 'processed',
     } as unknown as DataAssetSelection;
   }
   validate(): void {
