@@ -2,7 +2,7 @@ import { DatePipe } from '@angular/common';
 import { Component, OnDestroy, inject } from '@angular/core';
 import { MatButtonModule } from '@angular/material/button';
 import { MatCardModule } from '@angular/material/card';
-import { ActivatedRoute, RouterLink } from '@angular/router';
+import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 
 import { TaskDetail } from '../../core/models/api.models';
 import { ApiClient } from '../../core/services/api-client.service';
@@ -31,6 +31,9 @@ import { StatusChipComponent } from '../../shared/components/status-chip.compone
               请求取消
             </button>
           }
+          @if (canRerun(task)) {
+            <button mat-flat-button type="button" (click)="rerun(task)">重新运行</button>
+          }
         </div>
       </header>
       <section class="grid">
@@ -49,6 +52,22 @@ import { StatusChipComponent } from '../../shared/components/status-chip.compone
             结束：{{ task.finished_at ? (task.finished_at | date: 'HH:mm:ss') : '—' }}
           </p></mat-card
         >
+        <mat-card>
+          <p>执行尝试</p>
+          <strong>{{ task.attempt_no ?? 0 }} / {{ task.max_attempts ?? 0 }}</strong>
+          <p>Worker：{{ task.worker_id || '尚未领取' }}</p>
+          <p>心跳：{{ task.heartbeat_at ? (task.heartbeat_at | date: 'HH:mm:ss') : '—' }}</p>
+          @if (task.rerun_of_task_id) {
+            <p>
+              来源任务：<a [routerLink]="['/tasks', task.rerun_of_task_id]">{{
+                task.rerun_of_task_id
+              }}</a>
+            </p>
+          }
+          @if (task.next_retry_at) {
+            <p>下次恢复：{{ task.next_retry_at | date: 'yyyy-MM-dd HH:mm:ss' }}</p>
+          }
+        </mat-card>
       </section>
       @if (task.error_code || task.error_message) {
         <section class="error">
@@ -173,6 +192,7 @@ export class TaskDetailPage implements OnDestroy {
   private readonly tracker = inject(TaskTrackerService);
   private readonly api = inject(ApiClient);
   private readonly auth = inject(AuthService);
+  private readonly router = inject(Router);
   private readonly notifications = inject(NotificationService);
   readonly taskId = this.route.snapshot.paramMap.get('taskId') ?? '';
   readonly handle: TaskTrackingHandle | null = this.taskId ? this.tracker.track(this.taskId) : null;
@@ -192,6 +212,21 @@ export class TaskDetailPage implements OnDestroy {
       this.auth.hasPermission('task:cancel') &&
       !['success', 'failed', 'cancelled'].includes(task.status)
     );
+  }
+  canRerun(task: TaskDetail): boolean {
+    return (
+      this.auth.hasPermission('task:rerun') &&
+      ['success', 'failed', 'cancelled'].includes(task.status)
+    );
+  }
+  rerun(task: TaskDetail): void {
+    if (!window.confirm('将从原始工作流快照创建一条新任务，是否继续？')) return;
+    this.api
+      .post<{ run_id: string }, Record<string, never>>(`/api/v1/tasks/${task.task_id}/rerun`, {})
+      .subscribe({
+        next: (run) => void this.router.navigate(['/workflow-runs', run.run_id]),
+        error: (error: unknown) => this.notifications.error(error, '重新运行失败。'),
+      });
   }
   cancel(task: TaskDetail): void {
     this.api
