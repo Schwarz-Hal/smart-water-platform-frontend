@@ -150,4 +150,16 @@ describe('DataAssetPickerComponent', () => {
     expect(picker.selectedChannel()?.metric_code).toBe('pressure');
     expect(picker.valueSource()).toBe('raw');
   });
+
+  it('emits a complete version without a channel for whole-dataset nodes', () => {
+    const fixture = TestBed.createComponent(DataAssetPickerComponent);
+    fixture.componentRef.setInput('channelRequired', false);
+    const emitted: Array<DataAssetSelection | null> = [];
+    fixture.componentInstance.selectionChange.subscribe((value) => emitted.push(value));
+    fixture.detectChanges();
+
+    expect(emitted.at(-1)?.asset.id).toBe(asset.id);
+    expect(emitted.at(-1)?.version.id).toBe(version.id);
+    expect(emitted.at(-1)?.channel).toBeNull();
+  });
 });

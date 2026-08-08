@@ -27,11 +27,26 @@ export const routes: Routes = [
       },
       {
         path: 'operators',
-        loadComponent: () => import('./features/operators/operator-center.page').then((m) => m.OperatorCenterPage),
+        loadComponent: () =>
+          import('./features/operators/operator-center.page').then((m) => m.OperatorCenterPage),
         canActivate: [permissionGuard],
         data: { permission: 'operator:read' },
       },
       { path: 'algorithms', redirectTo: 'operators?kind=algorithm', pathMatch: 'full' },
+      {
+        path: 'datasets/:datasetId',
+        loadComponent: () =>
+          import('./features/data-sources/dataset-detail.page').then((m) => m.DatasetDetailPage),
+        canActivate: [permissionGuard],
+        data: { permission: 'dataset:read' },
+      },
+      {
+        path: 'tasks',
+        loadComponent: () =>
+          import('./features/task-detail/task-center.page').then((m) => m.TaskCenterPage),
+        canActivate: [permissionGuard],
+        data: { permission: 'task:read' },
+      },
       {
         path: 'tasks/:taskId',
         loadComponent: () =>
@@ -45,7 +60,11 @@ export const routes: Routes = [
         canActivate: [permissionGuard],
         data: { permission: 'result:read' },
       },
-      { path: 's01-leakage', redirectTo: 'workflows/new?template=s01_leakage_basic', pathMatch: 'full' },
+      {
+        path: 's01-leakage',
+        redirectTo: 'workflows/new?template=s01_leakage_basic',
+        pathMatch: 'full',
+      },
       {
         path: 'workflows',
         loadComponent: () =>
@@ -55,7 +74,8 @@ export const routes: Routes = [
       },
       {
         path: 'workflows/new',
-        loadComponent: () => import('./features/workflows/workflow-starter.page').then((m) => m.WorkflowStarterPage),
+        loadComponent: () =>
+          import('./features/workflows/workflow-starter.page').then((m) => m.WorkflowStarterPage),
         canActivate: [permissionGuard],
         data: { permission: 'workflow:edit' },
       },

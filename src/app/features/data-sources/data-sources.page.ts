@@ -5,6 +5,7 @@ import { MatCardModule } from '@angular/material/card';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
 import { MatSelectModule } from '@angular/material/select';
+import { RouterLink } from '@angular/router';
 
 import {
   CsvImportMapping,
@@ -29,6 +30,7 @@ import { StatusChipComponent } from '../../shared/components/status-chip.compone
     MatFormFieldModule,
     MatInputModule,
     MatSelectModule,
+    RouterLink,
     StatusChipComponent,
   ],
   template: `
@@ -295,6 +297,7 @@ import { StatusChipComponent } from '../../shared/components/status-chip.compone
                 [label]="version.status === 'ready' ? '可用' : version.status"
               />
               <div class="actions asset-actions">
+                <a mat-stroked-button [routerLink]="['/datasets', asset.id]">详情与治理</a>
                 @if (asset.status === 'active' && canDeleteDataset(asset)) {
                   <button mat-stroked-button type="button" (click)="archiveDataset(asset)">
                     归档

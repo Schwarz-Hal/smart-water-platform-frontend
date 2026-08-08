@@ -72,6 +72,21 @@ export interface TaskDetail {
   created_at: string;
   started_at: string | null;
   finished_at: string | null;
+  priority?: number;
+  attempt_no?: number;
+  max_attempts?: number;
+  rerun_of_task_id?: string | null;
+  worker_id?: string | null;
+  heartbeat_at?: string | null;
+  next_retry_at?: string | null;
+  state_revision?: number;
+}
+
+export interface TaskPage {
+  items: TaskDetail[];
+  page: number;
+  page_size: number;
+  total: number;
 }
 
 export interface TaskLog {
@@ -252,6 +267,10 @@ export interface DatasetVersion {
   time_start: string | null;
   time_end: string | null;
   created_at: string;
+  parent_version_id?: number | null;
+  version_kind?: 'imported' | 'derived' | string;
+  storage_backend?: 'mysql' | 'parquet' | string;
+  version_note?: string | null;
 }
 
 /** A user-visible data asset. The id remains an internal API reference. */
@@ -264,6 +283,35 @@ export interface DataAsset {
   status?: 'active' | 'archived' | 'purging' | 'purge_failed' | string;
   created_at: string;
   latest_version: DatasetVersion | null;
+  description?: string | null;
+  business_tags?: string[];
+  data_type?: string;
+  version_count?: number;
+  channel_count?: number;
+  latest_quality?: DataQualityReport | null;
+}
+
+export interface DataQualityReport {
+  id: string;
+  dataset_version_id: number;
+  workflow_run_id: string | null;
+  node_run_id: number | null;
+  score: number;
+  grade: 'A' | 'B' | 'C' | 'D' | string;
+  dimensions: Record<string, number>;
+  issue_summary: Record<string, number>;
+  trace_id: string;
+  sha256: string;
+  created_at: string;
+  report?: Record<string, unknown>;
+}
+
+export interface DatasetLineage {
+  version: DatasetVersion;
+  ancestors: DatasetVersion[];
+  created_by_task_id: string | null;
+  workflow_run_id: string | null;
+  workflow_graph: Record<string, unknown> | null;
 }
 
 export interface DatasetChannel {

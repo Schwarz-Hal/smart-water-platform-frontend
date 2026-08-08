@@ -162,6 +162,7 @@ export class AppShellComponent {
     { label: '算子中心', route: '/operators', permission: 'operator:read' },
     { label: '工作流', route: '/workflows', permission: 'workflow:read' },
     { label: '工作流运行记录', route: '/workflow-runs', permission: 'workflow:read' },
+    { label: '任务中心', route: '/tasks', permission: 'task:read' },
     { label: '用户与角色', route: '/users', permission: 'user:manage' },
   ];
   readonly visibleItems = computed(() =>
