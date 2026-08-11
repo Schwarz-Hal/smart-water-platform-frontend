@@ -26,6 +26,13 @@ export const routes: Routes = [
         data: { permission: 'data_source:read' },
       },
       {
+        path: 'operators/import',
+        loadComponent: () =>
+          import('./features/operators/algorithm-package.page').then((m) => m.AlgorithmPackagePage),
+        canActivate: [permissionGuard],
+        data: { permission: 'algorithm:publish' },
+      },
+      {
         path: 'operators',
         loadComponent: () =>
           import('./features/operators/operator-center.page').then((m) => m.OperatorCenterPage),
