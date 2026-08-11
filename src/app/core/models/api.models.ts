@@ -483,3 +483,75 @@ export interface WorkflowTemplateSummary {
   node_count: number;
   edge_count: number;
 }
+
+export interface RuntimeProfile {
+  id: number;
+  profile_code: string;
+  version: string;
+  display_name: string;
+  runtime_kind: string;
+  python_version: string;
+  executor_backend: string;
+  sdk_version: string;
+  status: string;
+  available: boolean;
+  manifest: Record<string, unknown>;
+}
+
+export interface AlgorithmEnvironmentSummary {
+  environment_id: string;
+  status: string;
+  environment_digest: string | null;
+  python_version: string | null;
+  platform_tag: string | null;
+  size_bytes: number | null;
+  provision_task_id: string | null;
+  validation_report: Record<string, unknown> | null;
+  error_code: string | null;
+  error_message: string | null;
+  prepared_at: string | null;
+}
+
+export interface AlgorithmOperatorDraft {
+  id: number;
+  operator_code: string;
+  operator_version: string;
+  entrypoint: string;
+  revision: number;
+  status: string;
+  contract: Record<string, unknown>;
+  validation_errors: Array<Record<string, string>>;
+}
+
+export interface ExternalAlgorithmPackage {
+  id: number;
+  algorithm_code: string;
+  algorithm_name: string;
+  version: string;
+  task_type: string;
+  runtime_type: string;
+  status: string;
+  execution_status: string;
+  package_sha256: string | null;
+  package_size_bytes: number | null;
+  manifest: Record<string, unknown> | null;
+  environment: AlgorithmEnvironmentSummary | null;
+  operator_drafts: AlgorithmOperatorDraft[];
+  smoke_tests: Array<{
+    smoke_test_id: string;
+    operator_draft_id: number;
+    task_id: string;
+    status: string;
+    output_preview: Record<string, unknown> | null;
+    error_code: string | null;
+    error_message: string | null;
+  }>;
+  models: Array<{
+    id: number;
+    model_key: string;
+    sha256: string;
+    size_bytes: number;
+    status: string;
+    original_filename: string;
+  }>;
+}
