@@ -26,6 +26,7 @@ import { ApiClient } from '../../core/services/api-client.service';
 import { NotificationService } from '../../core/services/notification.service';
 import { AuthService } from '../../core/services/auth.service';
 import { WorkflowCacheService } from '../../core/services/workflow-cache.service';
+import { OperatorNameService } from '../../core/services/operator-name.service';
 
 interface Port {
   key: string;
@@ -194,7 +195,7 @@ interface DockGesture {
                         >
                           <i [class.gpu]="item.runtime_type === 'builtin_gpu'"></i>
                           <span
-                            ><b>{{ item.node_name }}</b
+                            ><b>{{ operatorNames.displayName(item.node_code, item.node_name) }}</b
                             ><small>{{ item.node_code }}</small></span
                           >
                         </button>
@@ -993,6 +994,7 @@ interface DockGesture {
   `,
 })
 export class WorkflowEditorPage implements AfterViewInit, OnDestroy {
+  readonly operatorNames = inject(OperatorNameService);
   @ViewChild('editorHost') editorHost?: ElementRef<HTMLDivElement>;
   private readonly api = inject(ApiClient);
   private readonly notice = inject(NotificationService);
@@ -1066,7 +1068,7 @@ export class WorkflowEditorPage implements AfterViewInit, OnDestroy {
     const term = this.search.trim().toLowerCase();
     const groups = new Map<string, Definition[]>();
     for (const item of this.definitions()) {
-      if (term && !`${item.node_name} ${item.node_code}`.toLowerCase().includes(term)) continue;
+      if (term && !this.operatorNames.matches(item.node_code, item.node_name, term)) continue;
       const items = groups.get(item.category) || [];
       items.push(item);
       groups.set(item.category, items);
@@ -1098,7 +1100,7 @@ export class WorkflowEditorPage implements AfterViewInit, OnDestroy {
   readonly filteredDefinitions = computed(() => {
     const term = this.search.trim().toLowerCase();
     return this.definitions().filter(
-      (item) => !term || `${item.node_name} ${item.node_code}`.toLowerCase().includes(term),
+      (item) => !term || this.operatorNames.matches(item.node_code, item.node_name, term),
     );
   });
   readonly selectedNode = computed(
@@ -1110,7 +1112,7 @@ export class WorkflowEditorPage implements AfterViewInit, OnDestroy {
     if (!node || !['dataset_channel_v1', 'dataset_asset_v1'].includes(node.node_code)) return null;
     return {
       id: node.id,
-      label: node.definition?.node_name || node.node_code,
+      label: this.operatorNames.displayName(node.node_code, node.definition?.node_name),
       selection: this.bindingSelections.get(node.id) ?? null,
       wholeAsset: node.node_code === 'dataset_asset_v1',
     };
@@ -1118,7 +1120,10 @@ export class WorkflowEditorPage implements AfterViewInit, OnDestroy {
   readonly bindingNodes = computed(() =>
     this.nodes()
       .filter((node) => ['dataset_channel_v1', 'dataset_asset_v1'].includes(node.node_code))
-      .map((node) => ({ id: node.id, label: node.definition?.node_name || node.node_code })),
+      .map((node) => ({
+        id: node.id,
+        label: this.operatorNames.displayName(node.node_code, node.definition?.node_name),
+      })),
   );
   readonly bindingsReady = computed(() => {
     this.bindingRevision();
@@ -1591,7 +1596,9 @@ export class WorkflowEditorPage implements AfterViewInit, OnDestroy {
   private async addReteNode(item: EditorNode): Promise<void> {
     const def = item.definition;
     if (!def) return;
-    const node = new ClassicPreset.Node(def.node_name) as any;
+    const node = new ClassicPreset.Node(
+      this.operatorNames.displayName(def.node_code, def.node_name),
+    ) as any;
     this.reteNodes.set(item.id, node);
     const sockets = new Map<string, ClassicPreset.Socket>();
     const socket = (port: Port) => {

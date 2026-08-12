@@ -1,7 +1,8 @@
 import { DecimalPipe, JsonPipe } from '@angular/common';
-import { Component, Input } from '@angular/core';
+import { Component, Input, inject } from '@angular/core';
 
 import { WorkflowArtifact } from '../../core/models/api.models';
+import { OperatorNameService } from '../../core/services/operator-name.service';
 import {
   TimeSeriesChartComponent,
   TimeSeriesLine,
@@ -15,7 +16,8 @@ import {
       <section class="artifact-head">
         <div>
           <strong
-            >{{ item.node_code || item.node_instance_id || '节点' }} · {{ item.port_key }}</strong
+            >{{ operatorNames.displayName(item.node_code, item.node_instance_id || '节点') }} ·
+            {{ item.port_key }}</strong
           >
           <small>{{ item.data_type }}{{ item.unit ? ' · ' + item.unit : '' }}</small>
         </div>
@@ -185,6 +187,7 @@ import {
   `,
 })
 export class WorkflowArtifactRendererComponent {
+  readonly operatorNames = inject(OperatorNameService);
   @Input() artifact: WorkflowArtifact | null = null;
 
   payload(item: WorkflowArtifact): unknown {
