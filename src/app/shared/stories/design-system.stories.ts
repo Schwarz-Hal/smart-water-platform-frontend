@@ -77,8 +77,7 @@ class TokenCatalogStoryComponent {
   selector: 'app-workspace-preview-story',
   template: `
     <section class="workspace">
-      <button class="launcher left" aria-label="打开算子目录">☰</button>
-      <button class="launcher right" aria-label="打开节点属性">⚙</button>
+      <nav class="workspace-menu">窗口　✓ 算子目录　✓ 节点属性</nav>
       <aside class="panel catalog-panel">
         <header>算子目录</header>
         <input placeholder="搜索名称或编码" />
@@ -94,11 +93,8 @@ class TokenCatalogStoryComponent {
       </main>
       <aside class="panel inspector">
         <header>节点属性</header>
-        <p>Data quality score</p>
-        <label>最低分数 <input value="80" /></label>
-      </aside>
-      <aside class="panel binding">
-        <header>运行绑定</header>
+        <p>Dataset channel</p>
+        <header>运行数据绑定</header>
         <p>数据资产：尚未绑定</p>
       </aside>
     </section>
@@ -108,7 +104,7 @@ class TokenCatalogStoryComponent {
       position: relative;
       display: grid;
       grid-template-columns: 220px minmax(320px, 1fr) 240px;
-      grid-template-rows: 260px 150px;
+      grid-template-rows: 36px minmax(0, 1fr);
       min-height: 420px;
       overflow: hidden;
       border: 1px solid var(--sw-border);
@@ -127,12 +123,26 @@ class TokenCatalogStoryComponent {
       margin-bottom: 12px;
     }
     .catalog-panel {
-      grid-row: 1/3;
+      grid-column: 1;
+      grid-row: 2;
       border-width: 0 1px 0 0;
+    }
+    .workspace-menu {
+      grid-column: 1 / -1;
+      grid-row: 1;
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      padding: 0 14px;
+      border-bottom: 1px solid var(--sw-border);
+      background: var(--sw-surface);
+      color: var(--sw-text-secondary);
+      font-size: 12px;
     }
     .canvas {
       position: relative;
-      grid-row: 1/3;
+      grid-column: 2;
+      grid-row: 2;
       overflow: hidden;
       background-image:
         linear-gradient(var(--sw-canvas-grid) 1px, transparent 1px),
@@ -140,9 +150,8 @@ class TokenCatalogStoryComponent {
       background-size: 24px 24px;
     }
     .inspector {
-      border-width: 0 0 1px 1px;
-    }
-    .binding {
+      grid-column: 3;
+      grid-row: 2;
       border-width: 0 0 0 1px;
     }
     .operator,
@@ -175,23 +184,6 @@ class TokenCatalogStoryComponent {
       top: 143px;
       width: 76px;
       border-top: 3px solid var(--sw-connection);
-    }
-    .launcher {
-      position: absolute;
-      z-index: 3;
-      top: 8px;
-      width: 44px;
-      height: 44px;
-      border: 1px solid var(--sw-border);
-      border-radius: 12px;
-      background: var(--sw-surface);
-      color: var(--sw-primary);
-    }
-    .launcher.left {
-      left: 8px;
-    }
-    .launcher.right {
-      right: 8px;
     }
     @media (max-width: 800px) {
       .workspace {
