@@ -1,4 +1,3 @@
-import { DatePipe } from '@angular/common';
 import { Component, OnDestroy, inject } from '@angular/core';
 import { MatButtonModule } from '@angular/material/button';
 import { MatCardModule } from '@angular/material/card';
@@ -10,10 +9,11 @@ import { AuthService } from '../../core/services/auth.service';
 import { NotificationService } from '../../core/services/notification.service';
 import { TaskTrackerService, TaskTrackingHandle } from '../../core/services/task-tracker.service';
 import { StatusChipComponent } from '../../shared/components/status-chip.component';
+import { BeijingTimePipe } from '../../shared/pipes/beijing-time.pipe';
 
 @Component({
   selector: 'app-task-detail-page',
-  imports: [DatePipe, MatButtonModule, MatCardModule, RouterLink, StatusChipComponent],
+  imports: [BeijingTimePipe, MatButtonModule, MatCardModule, RouterLink, StatusChipComponent],
   template: `
     @if (handle?.task(); as task) {
       <header class="page-head">
@@ -46,17 +46,15 @@ import { StatusChipComponent } from '../../shared/components/status-chip.compone
           <small>trace_id：{{ task.trace_id }}</small></mat-card
         ><mat-card
           ><p>创建时间</p>
-          <strong>{{ task.created_at | date: 'yyyy-MM-dd HH:mm:ss' }}</strong>
-          <p>开始：{{ task.started_at ? (task.started_at | date: 'HH:mm:ss') : '—' }}</p>
-          <p>
-            结束：{{ task.finished_at ? (task.finished_at | date: 'HH:mm:ss') : '—' }}
-          </p></mat-card
+          <strong>{{ task.created_at | beijingTime }}</strong>
+          <p>开始：{{ task.started_at | beijingTime: 'HH:mm:ss' }}</p>
+          <p>结束：{{ task.finished_at | beijingTime: 'HH:mm:ss' }}</p></mat-card
         >
         <mat-card>
           <p>执行尝试</p>
           <strong>{{ task.attempt_no ?? 0 }} / {{ task.max_attempts ?? 0 }}</strong>
           <p>Worker：{{ task.worker_id || '尚未领取' }}</p>
-          <p>心跳：{{ task.heartbeat_at ? (task.heartbeat_at | date: 'HH:mm:ss') : '—' }}</p>
+          <p>心跳：{{ task.heartbeat_at | beijingTime: 'HH:mm:ss' }}</p>
           @if (task.rerun_of_task_id) {
             <p>
               来源任务：<a [routerLink]="['/tasks', task.rerun_of_task_id]">{{
@@ -65,7 +63,7 @@ import { StatusChipComponent } from '../../shared/components/status-chip.compone
             </p>
           }
           @if (task.next_retry_at) {
-            <p>下次恢复：{{ task.next_retry_at | date: 'yyyy-MM-dd HH:mm:ss' }}</p>
+            <p>下次恢复：{{ task.next_retry_at | beijingTime }}</p>
           }
         </mat-card>
       </section>
@@ -79,7 +77,7 @@ import { StatusChipComponent } from '../../shared/components/status-chip.compone
         <h2>任务日志</h2>
         @for (log of handle?.logs() ?? []; track log.created_at + log.message) {
           <div class="log">
-            <time>{{ log.created_at | date: 'HH:mm:ss' }}</time
+            <time>{{ log.created_at | beijingTime: 'HH:mm:ss' }}</time
             ><app-status-chip [status]="log.event_type" /><span>{{ log.message }}</span>
           </div>
         } @empty {

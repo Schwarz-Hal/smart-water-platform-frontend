@@ -42,13 +42,6 @@ import { StatusChipComponent } from '../../shared/components/status-chip.compone
       </div>
       <div class="header-actions">
         <button mat-stroked-button type="button" (click)="load()">刷新</button>
-        <button
-          mat-stroked-button
-          type="button"
-          (click)="showArchived.set(!showArchived()); load()"
-        >
-          {{ showArchived() ? '隐藏归档' : '查看归档' }}
-        </button>
         @if (canWrite()) {
           <button mat-stroked-button type="button" (click)="showMysql.set(!showMysql())">
             接入只读 MySQL
@@ -298,28 +291,9 @@ import { StatusChipComponent } from '../../shared/components/status-chip.compone
               />
               <div class="actions asset-actions">
                 <a mat-stroked-button [routerLink]="['/datasets', asset.id]">详情与治理</a>
-                @if (asset.status === 'active' && canDeleteDataset(asset)) {
-                  <button mat-stroked-button type="button" (click)="archiveDataset(asset)">
-                    归档
-                  </button>
-                }
-                @if (asset.status === 'archived' && canDeleteDataset(asset)) {
-                  <button mat-stroked-button type="button" (click)="restoreDataset(asset)">
-                    恢复
-                  </button>
-                }
-                @if (
-                  (asset.status === 'archived' || asset.status === 'purge_failed') &&
-                  asset.source_type === 'csv' &&
-                  canDeleteDataset(asset)
-                ) {
-                  <button
-                    mat-stroked-button
-                    color="warn"
-                    type="button"
-                    (click)="purgeDataset(asset)"
-                  >
-                    永久清除
+                @if (canDeleteDataset(asset)) {
+                  <button mat-stroked-button type="button" (click)="deleteDataset(asset)">
+                    删除
                   </button>
                 }
               </div>
@@ -571,7 +545,6 @@ export class DataSourcesPage {
   readonly sources = signal<DataSourceSummary[]>([]);
   readonly assets = signal<DataAsset[]>([]);
   readonly showMysql = signal(false);
-  readonly showArchived = signal(false);
   readonly showUpload = signal(false);
   readonly uploading = signal(false);
   readonly draftLoading = signal(false);
@@ -611,12 +584,10 @@ export class DataSourcesPage {
       next: (items) => this.sources.set(items),
       error: (error: unknown) => this.notifications.error(error),
     });
-    this.api
-      .get<DataAsset[]>('/api/v1/datasets', { include_archived: this.showArchived() })
-      .subscribe({
-        next: (items) => this.assets.set(items),
-        error: (error: unknown) => this.notifications.error(error),
-      });
+    this.api.get<DataAsset[]>('/api/v1/datasets').subscribe({
+      next: (items) => this.assets.set(items),
+      error: (error: unknown) => this.notifications.error(error),
+    });
   }
 
   chooseFile(event: Event): void {
@@ -749,38 +720,15 @@ export class DataSourcesPage {
       });
   }
 
-  archiveDataset(asset: DataAsset): void {
-    if (!window.confirm(`归档数据资产“${asset.name}”？归档后不能创建新任务。`)) return;
+  deleteDataset(asset: DataAsset): void {
+    if (!window.confirm(`删除数据资产“${asset.name}”？删除后将进入管理员回收站。`)) return;
     this.api.delete<DataAsset>(`/api/v1/datasets/${asset.id}`).subscribe({
       next: () => {
-        this.notifications.success('数据资产已归档。');
+        this.notifications.success('数据资产已移入回收站。');
         this.load();
       },
-      error: (error: unknown) => this.notifications.error(error, '归档失败。'),
+      error: (error: unknown) => this.notifications.error(error, '删除失败。'),
     });
-  }
-
-  restoreDataset(asset: DataAsset): void {
-    this.api.post<DataAsset, object>(`/api/v1/datasets/${asset.id}/restore`, {}).subscribe({
-      next: () => {
-        this.notifications.success('数据资产已恢复。');
-        this.load();
-      },
-      error: (error: unknown) => this.notifications.error(error, '恢复失败。'),
-    });
-  }
-
-  purgeDataset(asset: DataAsset): void {
-    if (!window.confirm(`永久清除“${asset.name}”？此操作不可撤销。`)) return;
-    this.api
-      .post<{ job_id: string; status: string }, object>(`/api/v1/datasets/${asset.id}/purge`, {})
-      .subscribe({
-        next: ({ job_id }) => {
-          this.notifications.success(`清除任务 ${job_id} 已提交。`);
-          this.load();
-        },
-        error: (error: unknown) => this.notifications.error(error, '永久清除被依赖关系阻止。'),
-      });
   }
   csvStatusLabel(source: DataSourceSummary): string {
     if (source.csv_upload_batch_code) return '待字段映射';
