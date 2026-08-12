@@ -1,5 +1,6 @@
 import { Component, HostListener, OnDestroy, inject, signal } from '@angular/core';
 import { MatButtonModule } from '@angular/material/button';
+import { MatMenuModule } from '@angular/material/menu';
 import { provideFormlyCore } from '@ngx-formly/core';
 import { withFormlyMaterial } from '@ngx-formly/material';
 import {
@@ -20,26 +21,27 @@ import { WorkflowEditorPage } from './workflow-editor.page';
 import {
   NodeInspectorPanelComponent,
   OperatorCatalogPanelComponent,
-  RuntimeBindingPanelComponent,
   WorkflowCanvasPanelComponent,
   WorkflowEditorPanelBridge,
 } from './workflow-editor-panels';
 import {
   WorkspaceLayoutPreference,
+  legacyWorkspacePreferenceKey,
   parseWorkspacePreference,
   workspacePreferenceKey,
 } from './workflow-workspace-preferences';
 
-type WorkspacePanelId = 'canvas' | 'catalog' | 'inspector' | 'bindings';
+type WorkspacePanelId = 'canvas' | 'catalog' | 'inspector';
+type OptionalWorkspacePanelId = Exclude<WorkspacePanelId, 'canvas'>;
 
 @Component({
   selector: 'app-workflow-editor-workspace-page',
   imports: [
     DockviewAngularModule,
     MatButtonModule,
+    MatMenuModule,
     OperatorCatalogPanelComponent,
     NodeInspectorPanelComponent,
-    RuntimeBindingPanelComponent,
     WorkflowCanvasPanelComponent,
   ],
   providers: [
@@ -90,6 +92,23 @@ type WorkspacePanelId = 'canvas' | 'catalog' | 'inspector' | 'bindings';
           <button mat-stroked-button (click)="toggleWorkspaceTheme()">
             {{ darkWorkspace() ? '浅色画布' : '深色画布' }}
           </button>
+          <button mat-stroked-button [matMenuTriggerFor]="windowMenu">窗口</button>
+          <mat-menu #windowMenu="matMenu">
+            @for (panel of windowPanels; track panel.id) {
+              <button
+                mat-menu-item
+                type="button"
+                role="menuitemcheckbox"
+                [attr.aria-checked]="isPanelOpen(panel.id)"
+                (click)="togglePanel(panel.id)"
+              >
+                <span class="window-check" aria-hidden="true">
+                  {{ isPanelOpen(panel.id) ? '✓' : '' }}
+                </span>
+                <span>{{ panel.label }}</span>
+              </button>
+            }
+          </mat-menu>
           <button mat-stroked-button (click)="resetWorkspaceLayout()">重置工作区</button>
         </div>
       </header>
@@ -99,23 +118,6 @@ type WorkspacePanelId = 'canvas' | 'catalog' | 'inspector' | 'bindings';
       }
 
       <div class="workspace-body" [class.mobile]="mobile()">
-        <button
-          class="panel-launcher catalog-launcher"
-          type="button"
-          (click)="openPanel('catalog')"
-          aria-label="打开算子目录"
-        >
-          算子
-        </button>
-        <button
-          class="panel-launcher inspector-launcher"
-          type="button"
-          (click)="openPanel('inspector')"
-          aria-label="打开节点属性"
-        >
-          属性
-        </button>
-
         @if (!mobile()) {
           <dv-dockview
             class="dockview-host"
@@ -138,28 +140,9 @@ type WorkspacePanelId = 'canvas' | 'catalog' | 'inspector' | 'bindings';
           @if (mobileInspectorOpen()) {
             <aside class="mobile-drawer right">
               <header>
-                节点配置<button type="button" (click)="mobileInspectorOpen.set(false)">关闭</button>
+                节点属性<button type="button" (click)="mobileInspectorOpen.set(false)">关闭</button>
               </header>
-              <nav>
-                <button
-                  type="button"
-                  [class.active]="mobileInspectorTab() === 'inspector'"
-                  (click)="mobileInspectorTab.set('inspector')"
-                >
-                  属性</button
-                ><button
-                  type="button"
-                  [class.active]="mobileInspectorTab() === 'bindings'"
-                  (click)="mobileInspectorTab.set('bindings')"
-                >
-                  运行绑定
-                </button>
-              </nav>
-              @if (mobileInspectorTab() === 'inspector') {
-                <app-node-inspector-panel />
-              } @else {
-                <app-runtime-binding-panel />
-              }
+              <app-node-inspector-panel />
             </aside>
           }
         }
@@ -236,25 +219,11 @@ type WorkspacePanelId = 'canvas' | 'catalog' | 'inspector' | 'bindings';
       width: 100%;
       height: 100%;
     }
-    .panel-launcher {
-      position: absolute;
-      top: 10px;
-      z-index: var(--sw-z-launcher);
-      width: 44px;
-      height: 44px;
-      border: 1px solid var(--sw-border-strong);
-      border-radius: 12px;
-      background: var(--sw-surface-raised);
+    .window-check {
+      display: inline-flex;
+      width: 22px;
       color: var(--sw-color-primary);
-      box-shadow: var(--sw-shadow-sm);
-      font-weight: 800;
-      cursor: pointer;
-    }
-    .catalog-launcher {
-      left: 10px;
-    }
-    .inspector-launcher {
-      right: 10px;
+      font-weight: 900;
     }
     .mobile-canvas {
       display: block;
@@ -288,21 +257,11 @@ type WorkspacePanelId = 'canvas' | 'catalog' | 'inspector' | 'bindings';
       border-bottom: 1px solid var(--sw-border);
       font-weight: 800;
     }
-    .mobile-drawer > header button,
-    .mobile-drawer nav button {
+    .mobile-drawer > header button {
       border: 0;
       background: transparent;
       color: var(--sw-color-primary);
       padding: 8px;
-    }
-    .mobile-drawer nav {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      border-bottom: 1px solid var(--sw-border);
-    }
-    .mobile-drawer nav button.active {
-      background: var(--sw-color-info-soft);
-      font-weight: 800;
     }
     :host ::ng-deep .dv-dockview {
       --dv-background-color: var(--sw-canvas-bg);
@@ -342,9 +301,6 @@ type WorkspacePanelId = 'canvas' | 'catalog' | 'inspector' | 'bindings';
       .actions button {
         flex: 0 0 auto;
       }
-      .panel-launcher {
-        top: 8px;
-      }
     }
   `,
 })
@@ -358,13 +314,16 @@ export class WorkflowEditorWorkspacePage extends WorkflowEditorPage implements O
   readonly mobile = signal(typeof window !== 'undefined' && window.innerWidth < 800);
   readonly mobileCatalogOpen = signal(false);
   readonly mobileInspectorOpen = signal(false);
-  readonly mobileInspectorTab = signal<'inspector' | 'bindings'>('inspector');
+  readonly openPanels = signal<ReadonlySet<OptionalWorkspacePanelId>>(new Set());
+  readonly windowPanels: ReadonlyArray<{ id: OptionalWorkspacePanelId; label: string }> = [
+    { id: 'catalog', label: '算子目录' },
+    { id: 'inspector', label: '节点属性' },
+  ];
   readonly dockviewTheme = signal<DockviewTheme>(themeLight);
   readonly components = {
     canvas: WorkflowCanvasPanelComponent,
     catalog: OperatorCatalogPanelComponent,
     inspector: NodeInspectorPanelComponent,
-    bindings: RuntimeBindingPanelComponent,
   };
   readonly emptyContextMenu = () => [];
 
@@ -386,25 +345,43 @@ export class WorkflowEditorWorkspacePage extends WorkflowEditorPage implements O
 
   onDockviewReady(event: DockviewReadyEvent): void {
     this.dockviewApi = event.api;
+    window.localStorage.removeItem(legacyWorkspacePreferenceKey(this.workspaceAuth.user()?.id));
     if (!this.restoreWorkspaceLayout()) this.createDefaultLayout();
     this.layoutSubscription?.dispose();
     this.layoutSubscription = event.api.onDidLayoutChange(() => {
+      this.syncOpenPanels();
       if (!this.restoringLayout) this.saveWorkspaceLayout();
     });
+    this.syncOpenPanels();
   }
 
-  openPanel(panelId: Exclude<WorkspacePanelId, 'canvas'>): void {
+  openPanel(panelId: OptionalWorkspacePanelId): void {
     if (this.mobile()) {
       if (panelId === 'catalog') this.mobileCatalogOpen.set(true);
-      else {
-        this.mobileInspectorTab.set(panelId === 'bindings' ? 'bindings' : 'inspector');
-        this.mobileInspectorOpen.set(true);
-      }
+      else this.mobileInspectorOpen.set(true);
       return;
     }
     const panel = this.dockviewApi?.getPanel(panelId);
     if (panel) panel.api.setActive();
     else this.addSidePanel(panelId);
+  }
+
+  togglePanel(panelId: OptionalWorkspacePanelId): void {
+    if (this.mobile()) {
+      if (panelId === 'catalog') this.mobileCatalogOpen.update((value) => !value);
+      else this.mobileInspectorOpen.update((value) => !value);
+      return;
+    }
+    const panel = this.dockviewApi?.getPanel(panelId);
+    if (panel) panel.api.close();
+    else this.addSidePanel(panelId);
+  }
+
+  isPanelOpen(panelId: OptionalWorkspacePanelId): boolean {
+    if (this.mobile()) {
+      return panelId === 'catalog' ? this.mobileCatalogOpen() : this.mobileInspectorOpen();
+    }
+    return this.openPanels().has(panelId);
   }
 
   resetWorkspaceLayout(): void {
@@ -448,29 +425,22 @@ export class WorkflowEditorWorkspacePage extends WorkflowEditorPage implements O
       initialWidth: 290,
       position: { referencePanel: canvas, direction: 'left' },
     });
-    const inspector = this.dockviewApi.addPanel({
+    this.dockviewApi.addPanel({
       id: 'inspector',
       component: 'inspector',
       title: '节点属性',
       initialWidth: 350,
       position: { referencePanel: canvas, direction: 'right' },
     });
-    this.dockviewApi.addPanel({
-      id: 'bindings',
-      component: 'bindings',
-      title: '运行绑定',
-      initialHeight: 300,
-      position: { referencePanel: inspector, direction: 'below' },
-    });
     canvas.api.setActive();
+    this.syncOpenPanels();
   }
 
-  private addSidePanel(panelId: Exclude<WorkspacePanelId, 'canvas'>): void {
+  private addSidePanel(panelId: OptionalWorkspacePanelId): void {
     if (!this.dockviewApi) return;
     const canvas = this.dockviewApi.getPanel('canvas');
     if (!canvas) return;
-    const title =
-      panelId === 'catalog' ? '算子目录' : panelId === 'bindings' ? '运行绑定' : '节点属性';
+    const title = panelId === 'catalog' ? '算子目录' : '节点属性';
     const panel = this.dockviewApi.addPanel({
       id: panelId,
       component: panelId,
@@ -479,6 +449,18 @@ export class WorkflowEditorWorkspacePage extends WorkflowEditorPage implements O
       position: { referencePanel: canvas, direction: panelId === 'catalog' ? 'left' : 'right' },
     });
     panel.api.setActive();
+    this.syncOpenPanels();
+  }
+
+  private syncOpenPanels(): void {
+    if (!this.dockviewApi) return;
+    this.openPanels.set(
+      new Set(
+        this.windowPanels
+          .filter((panel) => Boolean(this.dockviewApi?.getPanel(panel.id)))
+          .map((panel) => panel.id),
+      ),
+    );
   }
 
   private preferenceKey(): string {
@@ -489,7 +471,7 @@ export class WorkflowEditorWorkspacePage extends WorkflowEditorPage implements O
     if (!this.dockviewApi || this.mobile()) return;
     try {
       const preference: WorkspaceLayoutPreference = {
-        schemaVersion: 1,
+        schemaVersion: 2,
         userId: this.workspaceAuth.user()?.id ?? 0,
         theme: this.darkWorkspace() ? 'workspace-dark' : 'water-light',
         layout: this.dockviewApi.toJSON(),
