@@ -75,12 +75,12 @@ interface NavigationItem {
   styles: `
     .shell {
       height: 100vh;
-      background: #f5f7fb;
+      background: var(--sw-page-bg);
     }
     .side-nav {
       width: 236px;
-      border-right: 1px solid #e5e7eb;
-      background: #fff;
+      border-right: 1px solid var(--sw-border);
+      background: var(--sw-surface);
     }
     .brand {
       display: flex;
@@ -94,33 +94,33 @@ interface NavigationItem {
       width: 36px;
       height: 36px;
       border-radius: 10px;
-      background: #0f4c81;
-      color: #fff;
+      background: var(--sw-color-primary);
+      color: white;
       font-weight: 800;
     }
     .brand small {
       display: block;
       margin-top: 3px;
-      color: #64748b;
+      color: var(--sw-text-muted);
       font-size: 12px;
     }
     .active-link {
-      background: #e7f0fb;
-      color: #0f4c81;
+      background: color-mix(in srgb, var(--sw-color-primary) 12%, transparent);
+      color: var(--sw-color-primary-strong);
       font-weight: 700;
       border-radius: 8px;
     }
 
     .top-bar {
-      background: #fff;
-      border-bottom: 1px solid #e5e7eb;
-      color: #1e293b;
+      background: var(--sw-surface);
+      border-bottom: 1px solid var(--sw-border);
+      color: var(--sw-text-primary);
     }
     .spacer {
       flex: 1;
     }
     .user-name {
-      color: #475569;
+      color: var(--sw-text-secondary);
       font-size: 14px;
       margin-right: 10px;
     }
