@@ -34,6 +34,24 @@ export class AuthService {
       );
   }
 
+  register(username: string, displayName: string, password: string): Observable<AuthUser> {
+    return this.api.post<AuthUser, { username: string; display_name: string; password: string }>(
+      '/api/v1/auth/register',
+      {
+        username,
+        display_name: displayName,
+        password,
+      },
+    );
+  }
+
+  cancelAccount(username: string, password: string): Observable<{ cancelled: boolean }> {
+    return this.api.deleteWithBody<{ cancelled: boolean }, { username: string; password: string }>(
+      '/api/v1/auth/account',
+      { username, password },
+    );
+  }
+
   restoreProfile(): Observable<AuthUser | null> {
     if (!this.isAuthenticated()) {
       return of(null);

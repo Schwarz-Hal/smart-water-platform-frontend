@@ -8,6 +8,7 @@ import { NavigationEnd, Router, RouterLink, RouterLinkActive, RouterOutlet } fro
 import { filter } from 'rxjs/operators';
 
 import { AuthService } from '../core/services/auth.service';
+import { NotificationService } from '../core/services/notification.service';
 
 interface NavigationItem {
   label: string;
@@ -63,6 +64,7 @@ interface NavigationItem {
           <span class="spacer"></span>
           @if (auth.user(); as user) {
             <span class="user-name">{{ user.display_name }}（{{ user.roles.join('、') }}）</span>
+            <button mat-button type="button" (click)="cancelAccount()">注销账户</button>
             <button mat-button type="button" (click)="logout()">退出</button>
           }
         </mat-toolbar>
@@ -155,6 +157,7 @@ export class AppShellComponent {
   readonly mobile = signal(typeof window !== 'undefined' && window.innerWidth <= 800);
   readonly drawerOpen = signal(false);
   private readonly router = inject(Router);
+  private readonly notifications = inject(NotificationService);
   readonly workspace = signal(false);
   private readonly items: NavigationItem[] = [
     { label: '平台概览', route: '/dashboard' },
@@ -164,6 +167,7 @@ export class AppShellComponent {
     { label: '工作流运行记录', route: '/workflow-runs', permission: 'workflow:read' },
     { label: '任务中心', route: '/tasks', permission: 'task:read' },
     { label: '用户与角色', route: '/users', permission: 'user:manage' },
+    { label: '资源回收站', route: '/recycle-bin', permission: 'recycle:manage' },
   ];
   readonly visibleItems = computed(() =>
     this.items.filter((item) => !item.permission || this.auth.hasPermission(item.permission)),
@@ -195,5 +199,23 @@ export class AppShellComponent {
   logout(): void {
     this.auth.clearSession();
     void this.router.navigate(['/login']);
+  }
+
+  cancelAccount(): void {
+    const user = this.auth.user();
+    if (!user) return;
+    const username = window.prompt(
+      `账户注销后，资源将进入回收站并保留 14 天。\n请输入用户名 ${user.username} 确认：`,
+    );
+    if (username !== user.username) return;
+    const password = window.prompt('请输入当前密码：');
+    if (!password) return;
+    this.auth.cancelAccount(username, password).subscribe({
+      next: () => {
+        this.auth.clearSession();
+        void this.router.navigate(['/login']);
+      },
+      error: (error: unknown) => this.notifications.error(error, '账户注销失败。'),
+    });
   }
 }
