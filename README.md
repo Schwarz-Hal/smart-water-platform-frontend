@@ -83,4 +83,3 @@ src/app/layout/     已登录后的导航外壳
 - **GPU 算法不可点**：当前 GPU Worker 未验收，是刻意禁用，不应在前端解除限制。
 
 更多演示边界见 [docs/DEMO_GUIDE.md](docs/DEMO_GUIDE.md)。
-
