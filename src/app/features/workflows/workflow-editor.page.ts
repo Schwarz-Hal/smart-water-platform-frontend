@@ -36,7 +36,7 @@ interface Port {
   required?: boolean;
   cardinality?: 'one' | 'many' | string;
 }
-interface Definition {
+export interface Definition {
   node_code: string;
   version: string;
   node_name: string;
@@ -51,7 +51,7 @@ interface Definition {
   };
   ui_schema?: Record<string, Record<string, unknown>>;
 }
-interface EditorNode {
+export interface EditorNode {
   id: string;
   node_code: string;
   node_version: string;
@@ -1393,6 +1393,19 @@ export class WorkflowEditorPage implements AfterViewInit, OnDestroy {
     this.observeResize();
     if (this.nodes().length) void this.initializeRete();
     queueMicrotask(() => this.keepDocksInViewport());
+  }
+
+  attachEditorHost(element: HTMLDivElement): void {
+    if (this.editorHost?.nativeElement === element && this.reteEditor) return;
+    this.editorHost = new ElementRef(element);
+    this.observeResize();
+    void this.rebuildRete();
+  }
+
+  detachEditorHost(element: HTMLDivElement): void {
+    if (this.editorHost?.nativeElement !== element) return;
+    this.resizeObserver?.disconnect();
+    this.editorHost = undefined;
   }
 
   ngOnDestroy(): void {
