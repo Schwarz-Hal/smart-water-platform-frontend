@@ -263,8 +263,8 @@ export const OperatorParameters: StoryObj = {
         provideAnimationsAsync(),
         provideFormlyCore({
           types: [
-            { name: 'slider', component: FormlySliderFieldTypeComponent },
-            { name: 'json', component: FormlyJsonFieldTypeComponent },
+            { name: 'sw-slider', component: FormlySliderFieldTypeComponent },
+            { name: 'sw-json', component: FormlyJsonFieldTypeComponent },
           ],
         }),
       ],
