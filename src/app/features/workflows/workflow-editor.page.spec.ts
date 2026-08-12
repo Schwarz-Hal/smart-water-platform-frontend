@@ -40,6 +40,7 @@ describe('WorkflowEditorPage', () => {
         }
         return of({
           id: 1,
+          workflow_name: 'Demo',
           draft_revision: 1,
           draft_graph: {
             contract_version: '1.0',
@@ -92,6 +93,7 @@ describe('WorkflowEditorPage', () => {
     const page = TestBed.createComponent(WorkflowEditorPage).componentInstance;
     expect(page.definitions()).toHaveLength(1);
     expect(page.nodes().map((node) => node.id)).toEqual(['source']);
+    expect(page.workflowName()).toBe('Demo');
   });
 
   it('restores dataset bindings from the workflow draft graph', () => {

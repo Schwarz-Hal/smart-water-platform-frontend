@@ -111,7 +111,7 @@ interface DockGesture {
     <header class="page-header">
       <div>
         <p class="eyebrow">工作流编排</p>
-        <h1>S01 漏损分析工作流</h1>
+        <h1>{{ workflowName() }}</h1>
         <p class="lead">从节点目录拖入处理步骤，拖动端口建立数据流，保存后由服务端校验和发布。</p>
       </div>
       <div class="actions">
@@ -147,12 +147,12 @@ interface DockGesture {
         [style.left.px]="catalogDock().left"
         [style.top.px]="catalogDock().top"
         [style.width.px]="catalogCollapsed() ? 42 : catalogDock().width"
-        [style.height.px]="catalogDock().height"
+        [style.height.px]="catalogCollapsed() ? 42 : catalogDock().height"
       >
         <button
           class="dock-toggle"
           type="button"
-          (click)="catalogCollapsed.update((value) => !value)"
+          (click)="toggleDock('catalog')"
           [attr.aria-label]="catalogCollapsed() ? '展开算子目录' : '收起算子目录'"
         >
           {{ catalogCollapsed() ? '›' : '‹' }}
@@ -184,20 +184,22 @@ interface DockGesture {
                     ><span>{{ isCategoryOpen(group.category) ? '−' : '+' }}</span>
                   </button>
                   @if (isCategoryOpen(group.category)) {
-                    @for (item of group.items; track item.node_code) {
-                      <button
-                        class="catalog-item"
-                        draggable="true"
-                        (dragstart)="onCatalogDragStart($event, item)"
-                        (click)="addNode(item)"
-                      >
-                        <i [class.gpu]="item.runtime_type === 'builtin_gpu'"></i>
-                        <span
-                          ><b>{{ item.node_name }}</b
-                          ><small>{{ item.node_code }}</small></span
+                    <div class="catalog-items">
+                      @for (item of group.items; track item.node_code) {
+                        <button
+                          class="catalog-item"
+                          draggable="true"
+                          (dragstart)="onCatalogDragStart($event, item)"
+                          (click)="addNode(item)"
                         >
-                      </button>
-                    }
+                          <i [class.gpu]="item.runtime_type === 'builtin_gpu'"></i>
+                          <span
+                            ><b>{{ item.node_name }}</b
+                            ><small>{{ item.node_code }}</small></span
+                          >
+                        </button>
+                      }
+                    </div>
                   }
                 </section>
               }
@@ -247,7 +249,7 @@ interface DockGesture {
         [style.right.px]="inspectorDock().right"
         [style.top.px]="inspectorDock().top"
         [style.width.px]="inspectorCollapsed() ? 42 : inspectorDock().width"
-        [style.height.px]="inspectorDock().height"
+        [style.height.px]="inspectorCollapsed() ? 42 : inspectorDock().height"
       >
         <div class="heading dock-drag-handle" (pointerdown)="startDockDrag($event, 'inspector')">
           <div>
@@ -258,7 +260,7 @@ interface DockGesture {
             class="dock-toggle inspector-toggle"
             type="button"
             (pointerdown)="$event.stopPropagation()"
-            (click)="inspectorCollapsed.update((value) => !value)"
+            (click)="toggleDock('inspector')"
             [attr.aria-label]="inspectorCollapsed() ? '展开节点属性' : '收起节点属性'"
           >
             {{ inspectorCollapsed() ? '‹' : '›' }}
@@ -805,6 +807,7 @@ interface DockGesture {
     }
     .catalog.collapsed {
       width: 42px;
+      height: 42px;
       padding: 7px;
       overflow: hidden;
     }
@@ -815,8 +818,12 @@ interface DockGesture {
     }
     .inspector.collapsed {
       width: 42px;
+      height: 42px;
       padding: 7px;
       overflow: hidden;
+    }
+    .dock.collapsed .dock-scroll {
+      display: none;
     }
     .inspector:not(.collapsed) .dock-toggle {
       position: absolute;
@@ -853,6 +860,11 @@ interface DockGesture {
       border-top: 1px solid #f2f4f7;
       padding-top: 6px;
     }
+    .catalog-items {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 6px;
+    }
     .group-header {
       width: 100%;
       display: flex;
@@ -875,7 +887,8 @@ interface DockGesture {
     }
     .catalog-item {
       grid-template-columns: 9px minmax(0, 1fr);
-      margin: 4px 0;
+      min-width: 0;
+      margin: 0;
     }
     .catalog-item b {
       font-size: 11px;
@@ -992,6 +1005,7 @@ export class WorkflowEditorPage implements AfterViewInit, OnDestroy {
   readonly nodes = signal<EditorNode[]>([]);
   readonly selectedId = signal<string | null>(null);
   readonly workflowId = signal<number | null>(null);
+  readonly workflowName = signal('工作流编辑器');
   readonly publishedVersionId = signal<number | null>(null);
   readonly draftRevision = signal(1);
   readonly busy = signal(false);
@@ -1031,6 +1045,7 @@ export class WorkflowEditorPage implements AfterViewInit, OnDestroy {
   private activeDockGesture?: DockGesture;
   private readonly onDockPointerMove = (event: PointerEvent) => this.updateDockGesture(event);
   private readonly onDockPointerUp = () => this.endDockGesture();
+  private readonly onWindowResize = () => this.keepDocksInViewport();
   private readonly categoryState = new Set<string>([
     'data_source',
     'transform',
@@ -1127,6 +1142,56 @@ export class WorkflowEditorPage implements AfterViewInit, OnDestroy {
     return Math.max(min, Math.min(max, value));
   }
 
+  toggleDock(kind: DockKind): void {
+    if (kind === 'catalog') this.catalogCollapsed.update((value) => !value);
+    else this.inspectorCollapsed.update((value) => !value);
+    queueMicrotask(() => {
+      this.keepDocksInViewport();
+      this.saveDockPreferences();
+    });
+  }
+
+  private keepDocksInViewport(): void {
+    const layout = this.layoutElement();
+    if (!layout) return;
+    const layoutRect = layout.getBoundingClientRect();
+    if (layoutRect.width <= 0 || layoutRect.height <= 0) return;
+
+    for (const kind of ['catalog', 'inspector'] as const) {
+      const state = this.dockState(kind);
+      const collapsed = kind === 'catalog' ? this.catalogCollapsed() : this.inspectorCollapsed();
+      const dock = layout.querySelector<HTMLElement>(`.${kind}`);
+      const minimumWidth = kind === 'catalog' ? 220 : 260;
+      const maximumWidth = Math.max(42, layoutRect.width - 20);
+      const width = collapsed
+        ? state.width
+        : this.clamp(state.width, Math.min(minimumWidth, maximumWidth), maximumWidth);
+      const renderedWidth = collapsed
+        ? 42
+        : Math.min(dock?.getBoundingClientRect().width || width, width);
+      const renderedHeight = collapsed
+        ? 42
+        : Math.min(
+            dock?.getBoundingClientRect().height || state.height || layoutRect.height - 20,
+            layoutRect.height - 20,
+          );
+      const currentLeft = state.left ?? layoutRect.width - (state.right ?? 10) - renderedWidth;
+      const left = this.clamp(currentLeft, 0, Math.max(0, layoutRect.width - renderedWidth));
+      const top = this.clamp(state.top, 0, Math.max(0, layoutRect.height - renderedHeight));
+      const height = state.height === null ? null : Math.min(state.height, layoutRect.height - top);
+      const next: DockLayout = { ...state, left, right: null, top, width, height };
+      if (
+        next.left !== state.left ||
+        next.right !== state.right ||
+        next.top !== state.top ||
+        next.width !== state.width ||
+        next.height !== state.height
+      ) {
+        this.setDockState(kind, next);
+      }
+    }
+  }
+
   startDockDrag(event: PointerEvent, kind: DockKind): void {
     if (event.button !== 0) return;
     const layout = this.layoutElement();
@@ -1213,6 +1278,7 @@ export class WorkflowEditorPage implements AfterViewInit, OnDestroy {
   private endDockGesture(): void {
     if (!this.activeDockGesture) return;
     this.activeDockGesture = undefined;
+    this.keepDocksInViewport();
     this.saveDockPreferences();
   }
 
@@ -1272,6 +1338,7 @@ export class WorkflowEditorPage implements AfterViewInit, OnDestroy {
   constructor() {
     if (typeof window !== 'undefined') {
       window.addEventListener('beforeunload', this.beforeUnload);
+      window.addEventListener('resize', this.onWindowResize);
       this.restoreDockPreferences();
     }
     this.api
@@ -1295,6 +1362,7 @@ export class WorkflowEditorPage implements AfterViewInit, OnDestroy {
           this.workflowId.set(Number(workflowId));
           this.api.get<Record<string, unknown>>('/api/v1/workflows/' + workflowId).subscribe({
             next: (workflow) => {
+              this.workflowName.set(String(workflow['workflow_name'] || '工作流编辑器'));
               this.draftRevision.set(Number(workflow['draft_revision'] || 1));
               this.loadGraph(workflow['draft_graph'] as Graph);
               this.checkRecovery(workflow);
@@ -1322,13 +1390,16 @@ export class WorkflowEditorPage implements AfterViewInit, OnDestroy {
     };
   }
   ngAfterViewInit(): void {
-    if (this.nodes().length) void this.initializeRete().then(() => this.observeResize());
+    this.observeResize();
+    if (this.nodes().length) void this.initializeRete();
+    queueMicrotask(() => this.keepDocksInViewport());
   }
 
   ngOnDestroy(): void {
     if (this.autosaveTimer) clearTimeout(this.autosaveTimer);
     if (typeof window !== 'undefined') {
       window.removeEventListener('beforeunload', this.beforeUnload);
+      window.removeEventListener('resize', this.onWindowResize);
       window.removeEventListener('pointermove', this.onDockPointerMove);
       window.removeEventListener('pointerup', this.onDockPointerUp);
     }
@@ -1409,11 +1480,14 @@ export class WorkflowEditorPage implements AfterViewInit, OnDestroy {
   private observeResize(): void {
     const host = this.editorHost?.nativeElement;
     if (!host || typeof ResizeObserver === 'undefined') return;
+    const layout = this.layoutElement();
     this.resizeObserver?.disconnect();
     this.resizeObserver = new ResizeObserver(() => {
       this.reteArea?.area?.update?.();
+      this.keepDocksInViewport();
     });
     this.resizeObserver.observe(host);
+    if (layout) this.resizeObserver.observe(layout);
   }
 
   private installReteSync(): void {
