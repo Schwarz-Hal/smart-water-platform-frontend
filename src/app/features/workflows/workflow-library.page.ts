@@ -5,6 +5,7 @@ import { FormsModule } from '@angular/forms';
 
 import { ApiClient } from '../../core/services/api-client.service';
 import { NotificationService } from '../../core/services/notification.service';
+import { BeijingTimePipe } from '../../shared/pipes/beijing-time.pipe';
 
 interface WorkflowVersion {
   id: number;
@@ -35,7 +36,7 @@ interface WorkflowItem {
 
 @Component({
   selector: 'app-workflow-library-page',
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule, FormsModule, BeijingTimePipe],
   template: `
     <header class="page-header">
       <div>
@@ -85,7 +86,7 @@ interface WorkflowItem {
           <div class="meta">
             <span>发布版本 {{ workflow.version_count }}</span
             ><span>运行 {{ workflow.run_count }} 次</span
-            ><span>更新 {{ workflow.updated_at | date: 'yyyy-MM-dd HH:mm' }}</span>
+            ><span>更新 {{ workflow.updated_at | beijingTime: 'yyyy-MM-dd HH:mm' }}</span>
           </div>
           <div class="actions">
             @if (workflow.can_edit) {
@@ -124,7 +125,8 @@ interface WorkflowItem {
           <div class="version-row">
             <span>v{{ version.version }}</span
             ><small
-              >{{ version.status }} · {{ version.created_at | date: 'yyyy-MM-dd HH:mm' }}</small
+              >{{ version.status }} ·
+              {{ version.created_at | beijingTime: 'yyyy-MM-dd HH:mm' }}</small
             ><button class="secondary" (click)="deriveVersion(workflow, version)">派生草稿</button>
           </div>
         }

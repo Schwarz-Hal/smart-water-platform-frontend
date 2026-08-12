@@ -31,4 +31,18 @@ describe('ApiClient', () => {
     request.flush({ code: 0, message: 'ok', data: { id: 7 }, trace_id: 'trace-test' });
     expect(response).toEqual({ id: 7 });
   });
+
+  it('sends a request body with account lifecycle DELETE calls', () => {
+    api
+      .deleteWithBody<{ deleted: boolean }, { username: string; password: string }>(
+        '/api/v1/auth/account',
+        { username: 'demo', password: 'secret' },
+      )
+      .subscribe();
+
+    const request = http.expectOne('/api/v1/auth/account');
+    expect(request.request.method).toBe('DELETE');
+    expect(request.request.body).toEqual({ username: 'demo', password: 'secret' });
+    request.flush({ code: 0, message: 'ok', data: { deleted: true }, trace_id: 'trace-delete' });
+  });
 });

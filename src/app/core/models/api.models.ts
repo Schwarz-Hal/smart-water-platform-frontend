@@ -19,6 +19,10 @@ export interface AuthUser {
   status: string;
   roles: string[];
   permissions: string[];
+  created_at?: string;
+  updated_at?: string;
+  deleted_at?: string | null;
+  purge_after?: string | null;
 }
 
 export interface LoginResponse {
@@ -136,7 +140,47 @@ export interface DataSourceCreateRequest {
   is_read_only: true;
 }
 
-export interface UserView extends AuthUser {}
+export interface UserView extends AuthUser {
+  resource_counts?: {
+    datasets: number;
+    workflows: number;
+    tasks: number;
+  };
+}
+
+export interface UserPage {
+  items: UserView[];
+  page: number;
+  page_size: number;
+  total: number;
+}
+
+export type RecycleResourceType =
+  'dataset' | 'data_source' | 'csv_upload_draft' | 'workflow' | 'task' | 'user';
+
+export interface RecycleBinItem {
+  item_id: string;
+  resource_type: RecycleResourceType;
+  resource_id: string;
+  resource_name: string;
+  owner_user_id: number | null;
+  deleted_by_user_id: number | null;
+  deletion_batch_id: string | null;
+  status: 'trashed' | 'purging' | 'purge_failed' | 'restored' | 'purged';
+  summary: Record<string, unknown>;
+  deleted_at: string;
+  purge_after: string;
+  restored_at: string | null;
+  purged_at: string | null;
+  error_message: string | null;
+}
+
+export interface RecycleBinPage {
+  items: RecycleBinItem[];
+  page: number;
+  page_size: number;
+  total: number;
+}
 
 export interface StartTaskResponse {
   task_id: string;

@@ -25,6 +25,9 @@ export class ApiClient {
   delete<T>(path: string): Observable<T> {
     return this.http.delete<ApiEnvelope<T>>(path).pipe(map((response) => response.data));
   }
+  deleteWithBody<T, B>(path: string, body: B): Observable<T> {
+    return this.http.delete<ApiEnvelope<T>>(path, { body }).pipe(map((response) => response.data));
+  }
   put<T, B>(path: string, body: B): Observable<T> {
     return this.http.put<ApiEnvelope<T>>(path, body).pipe(map((response) => response.data));
   }

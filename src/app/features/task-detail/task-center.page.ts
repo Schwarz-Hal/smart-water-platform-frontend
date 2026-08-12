@@ -1,4 +1,3 @@
-import { DatePipe } from '@angular/common';
 import { Component, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
@@ -12,11 +11,12 @@ import { ApiClient } from '../../core/services/api-client.service';
 import { AuthService } from '../../core/services/auth.service';
 import { NotificationService } from '../../core/services/notification.service';
 import { StatusChipComponent } from '../../shared/components/status-chip.component';
+import { BeijingTimePipe } from '../../shared/pipes/beijing-time.pipe';
 
 @Component({
   selector: 'app-task-center-page',
   imports: [
-    DatePipe,
+    BeijingTimePipe,
     FormsModule,
     MatButtonModule,
     MatFormFieldModule,
@@ -59,11 +59,14 @@ import { StatusChipComponent } from '../../shared/components/status-chip.compone
           <a [routerLink]="['/tasks', task.task_id]">{{ task.task_type }}</a
           ><app-status-chip [status]="task.status" /><span>{{ task.progress }}%</span
           ><span>{{ task.attempt_no ?? 0 }}/{{ task.max_attempts ?? 0 }}</span
-          ><span>{{ task.created_at | date: 'yyyy-MM-dd HH:mm:ss' }}</span
+          ><span>{{ task.created_at | beijingTime }}</span
           ><span class="actions"
             ><a mat-button [routerLink]="['/tasks', task.task_id]">详情</a>
             @if (canRerun(task)) {
               <button mat-button (click)="rerun(task)">重新运行</button>
+            }
+            @if (auth.hasPermission('task:delete')) {
+              <button mat-button (click)="remove(task)">删除</button>
             }
           </span>
         </div>
@@ -160,7 +163,7 @@ import { StatusChipComponent } from '../../shared/components/status-chip.compone
 })
 export class TaskCenterPage {
   private readonly api = inject(ApiClient);
-  private readonly auth = inject(AuthService);
+  readonly auth = inject(AuthService);
   private readonly router = inject(Router);
   private readonly notifications = inject(NotificationService);
   readonly pageData = signal<TaskPage>({ items: [], page: 1, page_size: 20, total: 0 });
@@ -214,5 +217,18 @@ export class TaskCenterPage {
         next: (run) => void this.router.navigate(['/workflow-runs', run.run_id]),
         error: (error) => this.notifications.error(error, '重新运行失败。'),
       });
+  }
+  remove(task: TaskDetail): void {
+    const message = ['success', 'failed', 'cancelled'].includes(task.status)
+      ? '任务将进入回收站并保留 14 天，是否继续？'
+      : '系统将先请求取消任务，再将其移入回收站，是否继续？';
+    if (!window.confirm(message)) return;
+    this.api.delete<{ task_id: string }>(`/api/v1/tasks/${task.task_id}`).subscribe({
+      next: () => {
+        this.notifications.success('任务已从列表中移除。');
+        this.load();
+      },
+      error: (error) => this.notifications.error(error, '删除任务失败。'),
+    });
   }
 }

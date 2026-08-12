@@ -115,6 +115,13 @@ export const routes: Routes = [
         canActivate: [permissionGuard],
         data: { permission: 'user:manage' },
       },
+      {
+        path: 'recycle-bin',
+        loadComponent: () =>
+          import('./features/recycle-bin/recycle-bin.page').then((m) => m.RecycleBinPage),
+        canActivate: [permissionGuard],
+        data: { permission: 'recycle:manage' },
+      },
       { path: '', pathMatch: 'full', redirectTo: 'dashboard' },
     ],
   },
