@@ -1,5 +1,7 @@
 import { Component, HostListener, OnDestroy, inject, signal } from '@angular/core';
 import { MatButtonModule } from '@angular/material/button';
+import { provideFormlyCore } from '@ngx-formly/core';
+import { withFormlyMaterial } from '@ngx-formly/material';
 import {
   DockviewAngularModule,
   DockviewApi,
@@ -10,6 +12,10 @@ import {
 } from 'dockview-angular';
 
 import { AuthService } from '../../core/services/auth.service';
+import {
+  FormlyJsonFieldTypeComponent,
+  FormlySliderFieldTypeComponent,
+} from '../../shared/components/operator-parameter-form.component';
 import { WorkflowEditorPage } from './workflow-editor.page';
 import {
   NodeInspectorPanelComponent,
@@ -38,7 +44,18 @@ interface WorkspaceLayoutPreference {
     RuntimeBindingPanelComponent,
     WorkflowCanvasPanelComponent,
   ],
-  providers: [WorkflowEditorPanelBridge],
+  providers: [
+    WorkflowEditorPanelBridge,
+    provideFormlyCore([
+      ...withFormlyMaterial(),
+      {
+        types: [
+          { name: 'sw-slider', component: FormlySliderFieldTypeComponent },
+          { name: 'sw-json', component: FormlyJsonFieldTypeComponent },
+        ],
+      },
+    ]),
+  ],
   template: `
     <section class="workspace-page" [class.workspace-dark]="darkWorkspace()">
       <header class="workspace-header">
@@ -49,10 +66,10 @@ interface WorkspaceLayoutPreference {
         </div>
         <div class="status" [class.conflict]="autosaveState() === 'conflict'">{{ autosaveLabel() }}</div>
         <div class="actions">
-          <button mat-stroked-button (click)="validate()" [disabled]="busy()">校验图</button>
+          <button mat-stroked-button (click)="validate()" [disabled]="busy() || !parametersValid()">校验图</button>
           <button mat-flat-button (click)="save()" [disabled]="busy()">保存草稿</button>
-          <button mat-flat-button (click)="publish()" [disabled]="busy() || !workflowId()">发布版本</button>
-          <button mat-flat-button (click)="run()" [disabled]="busy() || !publishedVersionId() || !bindingsReady()">运行已发布版本</button>
+          <button mat-flat-button (click)="publish()" [disabled]="busy() || !workflowId() || !parametersValid()">发布版本</button>
+          <button mat-flat-button (click)="run()" [disabled]="busy() || !publishedVersionId() || !bindingsReady() || !parametersValid()">运行已发布版本</button>
           <button mat-stroked-button (click)="toggleWorkspaceTheme()">{{ darkWorkspace() ? '浅色画布' : '深色画布' }}</button>
           <button mat-stroked-button (click)="resetWorkspaceLayout()">重置工作区</button>
         </div>

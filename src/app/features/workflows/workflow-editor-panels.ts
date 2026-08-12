@@ -13,6 +13,10 @@ import { MatButtonModule } from '@angular/material/button';
 
 import { DataAssetSelection } from '../../core/models/api.models';
 import { DataAssetPickerComponent } from '../../shared/components/data-asset-picker.component';
+import {
+  OperatorParameterFormComponent,
+  ParameterSchema,
+} from '../../shared/components/operator-parameter-form.component';
 import type { Definition, EditorNode } from './workflow-editor.page';
 
 export interface SelectedRuntimeBinding {
@@ -42,6 +46,8 @@ export interface WorkflowEditorPanelHost {
   parameterEntries(node: EditorNode): Array<{ key: string; value: unknown }>;
   parameterSchema(node: EditorNode, key: string): Record<string, any>;
   setParameter(id: string, key: string, value: unknown): void;
+  setParameters(id: string, parameters: Record<string, unknown>): void;
+  setParameterValidity(id: string, valid: boolean): void;
   coerceNumber(value: unknown, integer: boolean): number;
   isOutputPort(nodeId: string, port: string): boolean;
   toggleOutputPort(nodeId: string, port: string): void;
@@ -184,7 +190,7 @@ export class WorkflowCanvasPanelComponent implements AfterViewInit, OnDestroy {
 
 @Component({
   selector: 'app-node-inspector-panel',
-  imports: [FormsModule, MatButtonModule],
+  imports: [FormsModule, MatButtonModule, OperatorParameterFormComponent],
   template: `
     <section class="panel-content">
       @if (host.selectedNode(); as node) {
@@ -197,21 +203,13 @@ export class WorkflowCanvasPanelComponent implements AfterViewInit, OnDestroy {
           @for (port of node.definition?.output_ports || []; track port.key) { <span class="output">{{ port.label }} → <small>{{ port.data_type }}{{ port.unit ? ' · ' + port.unit : '' }}</small></span> }
         </div>
         <h3>参数</h3>
-        @for (entry of host.parameterEntries(node); track entry.key) {
-          <label class="parameter"><span>{{ entry.key }}</span>
-            @if (host.parameterSchema(node, entry.key)['enum']; as options) {
-              <select [ngModel]="entry.value" (ngModelChange)="host.setParameter(node.id, entry.key, $event)">
-                @for (option of options; track option) { <option [ngValue]="option">{{ option }}</option> }
-              </select>
-            } @else if (host.parameterSchema(node, entry.key)['type'] === 'boolean') {
-              <input type="checkbox" [checked]="entry.value === true" (change)="host.setParameter(node.id, entry.key, $any($event.target).checked)" />
-            } @else if (host.parameterSchema(node, entry.key)['type'] === 'number' || host.parameterSchema(node, entry.key)['type'] === 'integer') {
-              <input type="number" [ngModel]="entry.value" (ngModelChange)="host.setParameter(node.id, entry.key, host.coerceNumber($event, host.parameterSchema(node, entry.key)['type'] === 'integer'))" />
-            } @else {
-              <input [ngModel]="entry.value" (ngModelChange)="host.setParameter(node.id, entry.key, $event)" />
-            }
-          </label>
-        }
+        <app-operator-parameter-form
+          [schema]="node.definition?.parameter_schema || {}"
+          [uiSchema]="node.definition?.ui_schema || {}"
+          [model]="node.parameters"
+          (parametersChange)="host.setParameters(node.id, $event)"
+          (validityChange)="host.setParameterValidity(node.id, $event)"
+        />
         <div class="outputs"><b>工作流输出</b>
           @for (port of node.definition?.output_ports || []; track port.key) {
             <label><input type="checkbox" [checked]="host.isOutputPort(node.id, port.key)" (change)="host.toggleOutputPort(node.id, port.key)" />{{ port.label || port.key }}</label>
@@ -232,8 +230,6 @@ export class WorkflowCanvasPanelComponent implements AfterViewInit, OnDestroy {
     .ports span { display: flex; justify-content: space-between; gap: 8px; padding: 6px 8px; border-radius: var(--sw-radius-sm); font-size: 12px; }
     .ports .input { background: var(--sw-color-success-soft); color: var(--sw-color-success); }
     .ports .output { background: var(--sw-color-info-soft); color: var(--sw-color-info); }
-    .parameter { display: grid; grid-template-columns: minmax(110px, 1fr) minmax(90px, 1fr); align-items: center; gap: 8px; margin: 8px 0; font-size: 12px; }
-    .parameter input:not([type='checkbox']), .parameter select { width: 100%; border: 1px solid var(--sw-border); border-radius: var(--sw-radius-sm); padding: 7px; background: var(--sw-surface-raised); color: inherit; }
     .outputs { display: grid; gap: 7px; margin: 18px 0; }
     .outputs label { display: flex; align-items: center; gap: 7px; }
     .empty { display: grid; height: 100%; place-items: center; color: var(--sw-text-muted); text-align: center; }
@@ -268,4 +264,3 @@ export class NodeInspectorPanelComponent {
 export class RuntimeBindingPanelComponent {
   readonly host = inject(WorkflowEditorPanelBridge).requireHost();
 }
-
