@@ -75,6 +75,26 @@
         },
         "test": {
           "builder": "@angular/build:unit-test"
+        },
+        "storybook": {
+          "builder": "@storybook/angular:start-storybook",
+          "options": {
+            "configDir": ".storybook",
+            "browserTarget": "smart-water-platform-frontend:build",
+            "tsConfig": "tsconfig.storybook.json",
+            "port": 6006,
+            "compodoc": false
+          }
+        },
+        "build-storybook": {
+          "builder": "@storybook/angular:build-storybook",
+          "options": {
+            "configDir": ".storybook",
+            "browserTarget": "smart-water-platform-frontend:build",
+            "tsConfig": "tsconfig.storybook.json",
+            "outputDir": "storybook-static",
+            "compodoc": false
+          }
         }
       }
     }

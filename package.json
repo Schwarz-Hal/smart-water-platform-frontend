@@ -6,6 +6,8 @@
     "start": "ng serve --port 4200 --proxy-config proxy.conf.json",
     "start:direct": "ng serve --port 4200",
     "build": "ng build",
+    "storybook": "ng run smart-water-platform-frontend:storybook",
+    "build-storybook": "ng run smart-water-platform-frontend:build-storybook",
     "watch": "ng build --watch --configuration development",
     "test": "ng test --watch=false",
     "lint": "ng build --configuration development",
