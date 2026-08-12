@@ -28,6 +28,11 @@
               {
                 "glob": "**/*",
                 "input": "public"
+              },
+              {
+                "glob": "dockview.css",
+                "input": "node_modules/dockview-angular/dist/styles",
+                "output": "vendor/dockview"
               }
             ],
             "styles": ["src/styles.scss"]
