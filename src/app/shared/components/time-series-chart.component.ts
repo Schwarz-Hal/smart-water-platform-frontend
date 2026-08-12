@@ -65,7 +65,12 @@ export class TimeSeriesChartComponent implements AfterViewInit, OnChanges, OnDes
     this.chart.setOption(
       {
         animation: false,
-        color: this.lines.map((line) => line.color ?? '#2563eb'),
+        color: this.lines.map(
+          (line) =>
+            line.color ??
+            getComputedStyle(document.documentElement).getPropertyValue('--sw-color-info').trim() ??
+            '#2563eb',
+        ),
         grid: { top: 46, right: 28, bottom: 42, left: 56 },
         title: { text: this.title, textStyle: { fontSize: 14, fontWeight: 'normal' } },
         tooltip: { trigger: 'axis' },

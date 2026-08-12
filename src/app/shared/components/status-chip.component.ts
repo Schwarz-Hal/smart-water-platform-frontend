@@ -17,31 +17,31 @@ import { Component, computed, input } from '@angular/core';
     .status-ready,
     .status-ok,
     .status-active {
-      background: #dcfce7;
-      color: #166534;
+      background: var(--sw-color-success-soft);
+      color: var(--sw-color-success);
     }
     .status-running,
     .status-queued,
     .status-pending,
     .status-mapping,
     .status-importing {
-      background: #dbeafe;
-      color: #1d4ed8;
+      background: var(--sw-color-info-soft);
+      color: var(--sw-color-info);
     }
     .status-failed,
     .status-degraded {
-      background: #fee2e2;
-      color: #b91c1c;
+      background: var(--sw-color-danger-soft);
+      color: var(--sw-color-danger);
     }
     .status-cancelled,
     .status-retired {
-      background: #e5e7eb;
-      color: #4b5563;
+      background: var(--sw-color-neutral-soft);
+      color: var(--sw-text-secondary);
     }
     .status-gpu,
     .status-warning {
-      background: #fef3c7;
-      color: #92400e;
+      background: var(--sw-color-warning-soft);
+      color: var(--sw-color-warning);
     }
   `,
 })

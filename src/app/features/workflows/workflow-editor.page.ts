@@ -36,7 +36,7 @@ interface Port {
   required?: boolean;
   cardinality?: 'one' | 'many' | string;
 }
-interface Definition {
+export interface Definition {
   node_code: string;
   version: string;
   node_name: string;
@@ -51,7 +51,7 @@ interface Definition {
   };
   ui_schema?: Record<string, Record<string, unknown>>;
 }
-interface EditorNode {
+export interface EditorNode {
   id: string;
   node_code: string;
   node_version: string;
@@ -1084,6 +1084,8 @@ export class WorkflowEditorPage implements AfterViewInit, OnDestroy {
   bindings = new Map<string, StoredBinding>();
   private readonly bindingSelections = new Map<string, DataAssetSelection>();
   private readonly bindingRevision = signal(0);
+  private readonly invalidParameterNodes = signal(new Set<string>());
+  readonly parametersValid = computed(() => this.invalidParameterNodes().size === 0);
   private reteEditor: any;
   private reteArea: any;
   private reteSelection: any;
@@ -1395,6 +1397,19 @@ export class WorkflowEditorPage implements AfterViewInit, OnDestroy {
     queueMicrotask(() => this.keepDocksInViewport());
   }
 
+  attachEditorHost(element: HTMLDivElement): void {
+    if (this.editorHost?.nativeElement === element && this.reteEditor) return;
+    this.editorHost = new ElementRef(element);
+    this.observeResize();
+    void this.rebuildRete();
+  }
+
+  detachEditorHost(element: HTMLDivElement): void {
+    if (this.editorHost?.nativeElement !== element) return;
+    this.resizeObserver?.disconnect();
+    this.editorHost = undefined;
+  }
+
   ngOnDestroy(): void {
     if (this.autosaveTimer) clearTimeout(this.autosaveTimer);
     if (typeof window !== 'undefined') {
@@ -1703,6 +1718,23 @@ export class WorkflowEditorPage implements AfterViewInit, OnDestroy {
     const node = this.reteNodes.get(id);
     if (node) node.data = this.nodes().find((item) => item.id === id)?.parameters;
     this.markDirty();
+  }
+  setParameters(id: string, parameters: Record<string, unknown>): void {
+    const current = this.nodes().find((item) => item.id === id)?.parameters;
+    if (current && JSON.stringify(current) === JSON.stringify(parameters)) return;
+    this.nodes.update((items) =>
+      items.map((item) => (item.id === id ? { ...item, parameters: { ...parameters } } : item)),
+    );
+    const node = this.reteNodes.get(id);
+    if (node) node.data = parameters;
+    this.pushHistory(this.graph());
+    this.markDirty();
+  }
+  setParameterValidity(id: string, valid: boolean): void {
+    const next = new Set(this.invalidParameterNodes());
+    if (valid) next.delete(id);
+    else next.add(id);
+    this.invalidParameterNodes.set(next);
   }
   isOutputPort(nodeId: string, port: string): boolean {
     return this.graphOutputs.some((output) => output['node_id'] === nodeId && output.port === port);
