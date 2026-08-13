@@ -75,7 +75,7 @@ interface StoredBinding {
   start?: string | null;
   end?: string | null;
 }
-interface Graph {
+export interface Graph {
   contract_version: string;
   nodes: Record<string, unknown>[];
   edges: Edge[];
@@ -1005,6 +1005,7 @@ export class WorkflowEditorPage implements AfterViewInit, OnDestroy {
   private readonly workflowCache = inject(WorkflowCacheService);
   readonly definitions = signal<Definition[]>([]);
   readonly nodes = signal<EditorNode[]>([]);
+  readonly graphLoaded = signal(false);
   readonly selectedId = signal<string | null>(null);
   readonly workflowId = signal<number | null>(null);
   readonly workflowName = signal('工作流编辑器');
@@ -1457,8 +1458,13 @@ export class WorkflowEditorPage implements AfterViewInit, OnDestroy {
       }),
     );
     this.selectedId.set(this.nodes()[0]?.id ?? null);
+    this.graphLoaded.set(true);
     this.pushHistory(this.graph());
     if (this.editorHost) void this.rebuildRete();
+  }
+
+  refreshEditorViewport(): void {
+    this.reteArea?.area?.update?.();
   }
   private async rebuildRete(): Promise<void> {
     this.reteArea?.destroy();

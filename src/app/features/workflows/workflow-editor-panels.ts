@@ -42,6 +42,7 @@ export interface WorkflowEditorPanelHost {
   attachEditorHost(element: HTMLDivElement): void;
   detachEditorHost(element: HTMLDivElement): void;
   fitView(): Promise<void>;
+  refreshEditorViewport(): void;
   undo(): void;
   redo(): void;
   parameterEntries(node: EditorNode): Array<{ key: string; value: unknown }>;

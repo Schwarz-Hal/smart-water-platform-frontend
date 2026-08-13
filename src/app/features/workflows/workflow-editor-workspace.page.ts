@@ -1,4 +1,12 @@
-import { Component, HostListener, OnDestroy, inject, signal } from '@angular/core';
+import {
+  Component,
+  ElementRef,
+  HostListener,
+  OnDestroy,
+  ViewChild,
+  inject,
+  signal,
+} from '@angular/core';
 import { MatButtonModule } from '@angular/material/button';
 import { MatMenuModule } from '@angular/material/menu';
 import { provideFormlyCore } from '@ngx-formly/core';
@@ -17,7 +25,7 @@ import {
   FormlyJsonFieldTypeComponent,
   FormlySliderFieldTypeComponent,
 } from '../../shared/components/operator-parameter-form.component';
-import { WorkflowEditorPage } from './workflow-editor.page';
+import { Graph, WorkflowEditorPage } from './workflow-editor.page';
 import {
   NodeInspectorPanelComponent,
   OperatorCatalogPanelComponent,
@@ -117,7 +125,7 @@ type OptionalWorkspacePanelId = Exclude<WorkspacePanelId, 'canvas'>;
         <div class="message" [class.error]="messageType() === 'error'">{{ message() }}</div>
       }
 
-      <div class="workspace-body" [class.mobile]="mobile()">
+      <div #workspaceBody class="workspace-body" [class.mobile]="mobile()">
         @if (!mobile()) {
           <dv-dockview
             class="dockview-host"
@@ -305,11 +313,14 @@ type OptionalWorkspacePanelId = Exclude<WorkspacePanelId, 'canvas'>;
   `,
 })
 export class WorkflowEditorWorkspacePage extends WorkflowEditorPage implements OnDestroy {
+  @ViewChild('workspaceBody') private workspaceBody?: ElementRef<HTMLDivElement>;
   private readonly bridge = inject(WorkflowEditorPanelBridge);
   private readonly workspaceAuth = inject(AuthService);
   private dockviewApi?: DockviewApi;
   private layoutSubscription?: { dispose(): void };
   private restoringLayout = false;
+  private workspaceInitialized = false;
+  private initializationFrame?: number;
   readonly darkWorkspace = signal(false);
   readonly mobile = signal(typeof window !== 'undefined' && window.innerWidth < 800);
   readonly mobileCatalogOpen = signal(false);
@@ -330,7 +341,6 @@ export class WorkflowEditorWorkspacePage extends WorkflowEditorPage implements O
   constructor() {
     super();
     this.bridge.host = this;
-    this.ensureDockviewStyles();
     this.restoreThemePreference();
   }
 
@@ -338,21 +348,18 @@ export class WorkflowEditorWorkspacePage extends WorkflowEditorPage implements O
   handleWorkspaceResize(): void {
     const nextMobile = window.innerWidth < 800;
     if (nextMobile !== this.mobile()) this.mobile.set(nextMobile);
-    queueMicrotask(() =>
-      this.dockviewApi?.layout(window.innerWidth, Math.max(320, window.innerHeight - 150), true),
-    );
+    queueMicrotask(() => this.layoutWorkspace());
   }
 
   onDockviewReady(event: DockviewReadyEvent): void {
     this.dockviewApi = event.api;
     window.localStorage.removeItem(legacyWorkspacePreferenceKey(this.workspaceAuth.user()?.id));
-    if (!this.restoreWorkspaceLayout()) this.createDefaultLayout();
     this.layoutSubscription?.dispose();
     this.layoutSubscription = event.api.onDidLayoutChange(() => {
       this.syncOpenPanels();
       if (!this.restoringLayout) this.saveWorkspaceLayout();
     });
-    this.syncOpenPanels();
+    this.scheduleWorkspaceInitialization();
   }
 
   openPanel(panelId: OptionalWorkspacePanelId): void {
@@ -405,9 +412,15 @@ export class WorkflowEditorWorkspacePage extends WorkflowEditorPage implements O
   }
 
   override ngOnDestroy(): void {
+    if (this.initializationFrame !== undefined) cancelAnimationFrame(this.initializationFrame);
     this.layoutSubscription?.dispose();
     this.bridge.host = undefined;
     super.ngOnDestroy();
+  }
+
+  override loadGraph(graph: Graph): void {
+    super.loadGraph(graph);
+    this.scheduleWorkspaceInitialization();
   }
 
   private createDefaultLayout(): void {
@@ -521,13 +534,38 @@ export class WorkflowEditorWorkspacePage extends WorkflowEditorPage implements O
     }
   }
 
-  private ensureDockviewStyles(): void {
-    if (typeof document === 'undefined' || document.querySelector('link[data-dockview-styles]'))
+  private scheduleWorkspaceInitialization(): void {
+    if (this.mobile() || this.workspaceInitialized || this.initializationFrame !== undefined)
       return;
-    const link = document.createElement('link');
-    link.rel = 'stylesheet';
-    link.href = '/vendor/dockview/dockview.css';
-    link.dataset['dockviewStyles'] = 'true';
-    document.head.appendChild(link);
+    let attempts = 0;
+    const initialize = () => {
+      this.initializationFrame = undefined;
+      const api = this.dockviewApi;
+      const rect = this.workspaceBody?.nativeElement.getBoundingClientRect();
+      if (!api || !this.graphLoaded() || !rect || rect.width < 1 || rect.height < 1) {
+        if (attempts++ < 120) this.initializationFrame = requestAnimationFrame(initialize);
+        return;
+      }
+
+      api.layout(Math.floor(rect.width), Math.floor(rect.height), true);
+      if (!this.restoreWorkspaceLayout()) {
+        api.closeAllGroups();
+        this.createDefaultLayout();
+      }
+      this.workspaceInitialized = true;
+      this.syncOpenPanels();
+      requestAnimationFrame(() => {
+        this.layoutWorkspace();
+        this.refreshEditorViewport();
+      });
+    };
+    this.initializationFrame = requestAnimationFrame(initialize);
+  }
+
+  private layoutWorkspace(): void {
+    const rect = this.workspaceBody?.nativeElement.getBoundingClientRect();
+    if (!this.dockviewApi || !rect || rect.width < 1 || rect.height < 1) return;
+    this.dockviewApi.layout(Math.floor(rect.width), Math.floor(rect.height), true);
+    this.refreshEditorViewport();
   }
 }
