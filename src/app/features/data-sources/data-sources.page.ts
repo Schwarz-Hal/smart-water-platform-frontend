@@ -9,6 +9,7 @@ import { RouterLink } from '@angular/router';
 
 import {
   CsvImportMapping,
+  CsvMappingSuggestion,
   CsvUploadDraft,
   DataAsset,
   DataSourceCreateRequest,
@@ -102,6 +103,17 @@ import { StatusChipComponent } from '../../shared/components/status-chip.compone
             </div>
             <button mat-button type="button" (click)="discardDraft()">重新选择文件</button>
           </div>
+          @if (draft()?.duplicate?.detected) {
+            <div class="duplicate-warning">
+              该文件内容与您已有的 {{ draft()?.duplicate?.matching_asset_count }} 个数据资产相同，仍会创建独立副本，不会覆盖原资产。
+            </div>
+          }
+          @if (draft()?.mapping_suggestion; as suggestion) {
+            <div class="mapping-suggestion">
+              <div><strong>智能映射建议</strong><span>{{ suggestion.requires_confirmation ? '请确认低置信度字段。' : '可直接应用后再检查。' }}</span></div>
+              <button mat-stroked-button type="button" (click)="applySuggestion(suggestion)">应用建议</button>
+            </div>
+          }
           <div class="preview-wrap">
             <table>
               <thead>
@@ -204,6 +216,7 @@ import { StatusChipComponent } from '../../shared/components/status-chip.compone
               }
             </div>
             <div class="actions">
+              <label class="quality-toggle"><input type="checkbox" formControlName="autoQualityProfile" />导入完成后自动质量评分</label>
               <button
                 mat-flat-button
                 color="primary"
@@ -425,6 +438,21 @@ import { StatusChipComponent } from '../../shared/components/status-chip.compone
     .workflow-card {
       margin-bottom: 18px;
     }
+    .duplicate-warning,
+    .mapping-suggestion {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 12px 14px;
+      margin: 12px 0;
+      border-radius: 10px;
+      overflow-wrap: anywhere;
+    }
+    .duplicate-warning { background: #fff7ed; color: #9a3412; }
+    .mapping-suggestion { background: #eff6ff; color: #1e3a8a; }
+    .mapping-suggestion span { display: block; margin-top: 4px; font-size: 12px; }
+    .quality-toggle { display: inline-flex; align-items: center; gap: 8px; color: #475569; }
     .upload-form {
       display: grid;
       gap: 12px;
@@ -556,6 +584,7 @@ export class DataSourcesPage {
     pointColumn: ['', Validators.required],
     timeColumn: ['', Validators.required],
     recordIdColumn: [''],
+    autoQualityProfile: [true],
     metrics: this.fb.array([this.newMetric()]),
   });
   readonly mysqlForm = this.fb.group({
@@ -605,7 +634,7 @@ export class DataSourcesPage {
     this.api.post<CsvUploadDraft, FormData>('/api/v1/data-sources/csv-uploads', form).subscribe({
       next: (draft) => {
         this.draft.set(draft);
-        this.seedMapping(draft.headers);
+        this.seedMapping(draft.headers, draft.mapping_suggestion);
         this.uploading.set(false);
       },
       error: (error: unknown) => {
@@ -621,7 +650,7 @@ export class DataSourcesPage {
       next: (draft) => {
         this.draft.set(draft);
         this.uploadForm.controls.sourceName.setValue(source.source_name);
-        this.seedMapping(draft.headers);
+        this.seedMapping(draft.headers, draft.mapping_suggestion);
         this.showMysql.set(false);
         this.showUpload.set(true);
         this.draftLoading.set(false);
@@ -642,6 +671,7 @@ export class DataSourcesPage {
       point_column: value.pointColumn,
       time_column: value.timeColumn,
       record_id_column: value.recordIdColumn || null,
+      auto_quality_profile: value.autoQualityProfile,
       metrics: value.metrics.map((metric) => ({
         code: metric.code.trim(),
         name: metric.name.trim(),
@@ -689,6 +719,7 @@ export class DataSourcesPage {
       pointColumn: '',
       timeColumn: '',
       recordIdColumn: '',
+      autoQualityProfile: true,
       metrics: [
         {
           code: 'flow',
@@ -820,7 +851,24 @@ export class DataSourcesPage {
       statusColumn: [''],
     });
   }
-  private seedMapping(headers: string[]): void {
+  applySuggestion(suggestion: CsvMappingSuggestion): void {
+    if (suggestion.point_column?.column) this.mappingForm.controls.pointColumn.setValue(suggestion.point_column.column);
+    if (suggestion.time_column?.column) this.mappingForm.controls.timeColumn.setValue(suggestion.time_column.column);
+    this.mappingForm.controls.recordIdColumn.setValue(suggestion.record_id_column?.column || '');
+    this.metrics.clear();
+    const rows = suggestion.metrics.length ? suggestion.metrics : [{ code: 'flow', name: '流量', unit: 'm³/h', raw_column: '' }];
+    for (const metric of rows) {
+      const group = this.newMetric();
+      group.patchValue({ code: metric.code, name: metric.name, unit: metric.unit || '', rawColumn: metric.raw_column });
+      this.metrics.push(group);
+    }
+  }
+
+  private seedMapping(headers: string[], suggestion?: CsvMappingSuggestion): void {
+    if (suggestion) {
+      this.applySuggestion(suggestion);
+      return;
+    }
     const pick = (patterns: string[]) =>
       headers.find((header) =>
         patterns.some((pattern) => header.toLowerCase().includes(pattern)),

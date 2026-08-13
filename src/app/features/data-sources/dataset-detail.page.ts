@@ -6,6 +6,7 @@ import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import {
   DataAsset,
   DataQualityReport,
+  DatasetLineageTree,
   DatasetChannel,
   DatasetLineage,
   DatasetVersion,
@@ -39,7 +40,7 @@ import { BeijingTimePipe } from '../../shared/pipes/beijing-time.pipe';
           ><a
             mat-flat-button
             [routerLink]="['/workflows/new']"
-            [queryParams]="{ template: 'timeseries_governance_basic' }"
+            [queryParams]="{ template: 'timeseries_governance_basic', dataset_version_id: selectedVersion()?.id }"
             >创建治理工作流</a
           >
           @if (canDelete()) {
@@ -98,6 +99,17 @@ import { BeijingTimePipe } from '../../shared/pipes/beijing-time.pipe';
               </div>
             }
             <h3>数据血缘</h3>
+            @if (lineageTree(); as tree) {
+              <div class="lineage-tree">
+                @for (node of tree.nodes; track node.version_id) {
+                  <div class="lineage-node" [class.current]="node.version_id === tree.current_version_id">
+                    <strong>{{ node.operation_name }}</strong>
+                    <span>{{ node.is_synthetic ? '模拟扩展' : node.version_kind === 'imported' ? '初始导入' : '派生版本' }} · {{ node.record_count }} 条</span>
+                    @if (node.quality) { <small>质量 {{ node.quality.grade }} · {{ node.quality.score.toFixed(1) }}</small> }
+                  </div>
+                }
+              </div>
+            }
             @if (lineage(); as value) {
               <p>
                 来源：{{ value.ancestors.length ? value.ancestors[0].version_code : '原始导入' }}
@@ -114,7 +126,7 @@ import { BeijingTimePipe } from '../../shared/pipes/beijing-time.pipe';
               }
             </div>
             <h3>质量报告</h3>
-            @for (report of reports(); track report.id) {
+            @for (report of reports(); track report.report_id) {
               <article class="report">
                 <strong class="grade">{{ report.grade }}</strong>
                 <div>
@@ -218,6 +230,10 @@ import { BeijingTimePipe } from '../../shared/pipes/beijing-time.pipe';
       grid-template-columns: repeat(2, minmax(0, 1fr));
       gap: 10px;
     }
+    .lineage-tree { display: grid; gap: 8px; margin: 12px 0 20px; }
+    .lineage-node { padding: 10px 12px; border-left: 4px solid #94a3b8; background: #f8fafc; border-radius: 8px; }
+    .lineage-node.current { border-left-color: #0f67c9; background: #eff6ff; }
+    .lineage-node span, .lineage-node small { display: block; color: #64748b; margin-top: 3px; }
     .channels div {
       padding: 12px;
       background: #f8fafc;
@@ -276,6 +292,7 @@ export class DatasetDetailPage {
   readonly channels = signal<DatasetChannel[]>([]);
   readonly reports = signal<DataQualityReport[]>([]);
   readonly lineage = signal<DatasetLineage | null>(null);
+  readonly lineageTree = signal<DatasetLineageTree | null>(null);
   readonly showHistory = signal(false);
   constructor() {
     this.api.get<DataAsset>(`/api/v1/datasets/${this.datasetId}`).subscribe({
@@ -301,6 +318,9 @@ export class DatasetDetailPage {
     this.api
       .get<DatasetLineage>(`/api/v1/dataset-versions/${version.id}/lineage`)
       .subscribe((value) => this.lineage.set(value));
+    this.api
+      .get<DatasetLineageTree>(`/api/v1/datasets/${this.datasetId}/lineage`)
+      .subscribe((value) => this.lineageTree.set(value));
   }
 
   versionLabel(version: DatasetVersion): string {

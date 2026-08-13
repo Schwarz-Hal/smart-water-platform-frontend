@@ -258,10 +258,12 @@ export class WorkflowStarterPage {
   readonly busy = signal(false);
   name = '';
   description = '';
+  datasetVersionId: number | null = null;
 
   constructor() {
     this.route.queryParamMap.subscribe((params) => {
       const requested = params.get('template');
+      this.datasetVersionId = params.get('dataset_version_id') ? Number(params.get('dataset_version_id')) : null;
       const found = this.templates().find((item) => item.template_code === requested);
       if (found) this.selected.set(found);
     });
@@ -292,6 +294,7 @@ export class WorkflowStarterPage {
           template_code: starter.template_code,
           version: starter.version,
         },
+        dataset_version_id: this.datasetVersionId,
       })
       .subscribe({
         next: (workflow) => {
