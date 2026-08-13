@@ -38,6 +38,57 @@ export interface DependencyHealth {
   dependencies: Record<string, 'ok' | 'failed'>;
 }
 
+export type PortalWorkloadLevel = 'idle' | 'normal' | 'busy' | 'strained' | 'degraded';
+
+export interface PortalSummary {
+  scope: 'platform' | 'personal';
+  stats: {
+    active_users: number | null;
+    data_assets: number;
+    workflows: number;
+    running_tasks: number;
+    completed_runs_7d: number;
+    failed_tasks_24h: number;
+  };
+  workload: {
+    level: PortalWorkloadLevel;
+    queued: number;
+    running: number;
+    retrying: number;
+    oldest_wait_seconds: number;
+    reason_codes: string[];
+  };
+  recent_datasets: Array<{
+    id: number;
+    name: string;
+    source_type: string | null;
+    latest_version: {
+      id: number;
+      version_code: string;
+      record_count: number;
+      time_start: string | null;
+      time_end: string | null;
+    } | null;
+    updated_at: string;
+  }>;
+  recent_workflows: Array<{
+    id: number;
+    workflow_name: string;
+    status: string;
+    draft_revision: number;
+    source_template_code: string | null;
+    updated_at: string;
+  }>;
+  recent_tasks: Array<{
+    task_id: string;
+    task_type: string;
+    status: string;
+    progress: number;
+    trace_id: string;
+    updated_at: string;
+  }>;
+}
+
 export interface AlgorithmVersion {
   id: number;
   algorithm_id: number | null;
