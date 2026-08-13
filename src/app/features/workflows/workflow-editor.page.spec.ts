@@ -1,17 +1,22 @@
 import { TestBed } from '@angular/core/testing';
 import { ActivatedRoute } from '@angular/router';
-import { of } from 'rxjs';
+import { delay, of } from 'rxjs';
 
 import { ApiClient } from '../../core/services/api-client.service';
 import { NotificationService } from '../../core/services/notification.service';
 import { WorkflowEditorPage } from './workflow-editor.page';
+import { WorkflowEditorWorkspacePage } from './workflow-editor-workspace.page';
 
 describe('WorkflowEditorPage', () => {
+  let asyncApiResponses = false;
+
   beforeEach(async () => {
+    asyncApiResponses = false;
     const api = {
       get: <T>(path: string) => {
+        const respond = (value: T) => (asyncApiResponses ? of(value).pipe(delay(0)) : of(value));
         if (path.includes('operators')) {
-          return of({
+          return respond({
             items: [
               {
                 code: 'dataset_channel_v1',
@@ -38,7 +43,7 @@ describe('WorkflowEditorPage', () => {
             ],
           } as T);
         }
-        return of({
+        return respond({
           id: 1,
           workflow_name: 'Demo',
           draft_revision: 1,
@@ -72,7 +77,7 @@ describe('WorkflowEditorPage', () => {
       put: <T>() => of({} as T),
     };
     await TestBed.configureTestingModule({
-      imports: [WorkflowEditorPage],
+      imports: [WorkflowEditorPage, WorkflowEditorWorkspacePage],
       providers: [
         { provide: ApiClient, useValue: api },
         {
@@ -109,5 +114,24 @@ describe('WorkflowEditorPage', () => {
       end: '2026-01-02T00:00:00',
     });
     expect(page.bindingsReady()).toBe(true);
+  });
+
+  it('keeps a dedicated message row so the workspace remains in the flexible grid row', async () => {
+    asyncApiResponses = true;
+    globalThis.ResizeObserver ??= class {
+      observe(): void {}
+      unobserve(): void {}
+      disconnect(): void {}
+    } as unknown as typeof ResizeObserver;
+    const fixture = TestBed.createComponent(WorkflowEditorWorkspacePage);
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    const messageSlot = fixture.nativeElement.querySelector('.message-slot');
+    const workspaceBody = fixture.nativeElement.querySelector('.workspace-body');
+
+    expect(messageSlot).toBeTruthy();
+    expect(messageSlot.textContent.trim()).toBe('');
+    expect(workspaceBody).toBeTruthy();
   });
 });

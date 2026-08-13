@@ -121,9 +121,11 @@ type OptionalWorkspacePanelId = Exclude<WorkspacePanelId, 'canvas'>;
         </div>
       </header>
 
-      @if (message()) {
-        <div class="message" [class.error]="messageType() === 'error'">{{ message() }}</div>
-      }
+      <div class="message-slot" aria-live="polite">
+        @if (message()) {
+          <div class="message" [class.error]="messageType() === 'error'">{{ message() }}</div>
+        }
+      </div>
 
       <div #workspaceBody class="workspace-body" [class.mobile]="mobile()">
         @if (!mobile()) {
@@ -132,7 +134,6 @@ type OptionalWorkspacePanelId = Exclude<WorkspacePanelId, 'canvas'>;
             [components]="components"
             [theme]="dockviewTheme()"
             [floatingGroupBounds]="'boundedWithinViewport'"
-            [getTabContextMenuItems]="emptyContextMenu"
             (ready)="onDockviewReady($event)"
           />
         } @else {
@@ -216,6 +217,9 @@ type OptionalWorkspacePanelId = Exclude<WorkspacePanelId, 'canvas'>;
     .message.error {
       background: var(--sw-color-danger-soft);
       color: var(--sw-color-danger);
+    }
+    .message-slot:empty {
+      min-height: 0;
     }
     .workspace-body {
       position: relative;
@@ -336,8 +340,6 @@ export class WorkflowEditorWorkspacePage extends WorkflowEditorPage implements O
     catalog: OperatorCatalogPanelComponent,
     inspector: NodeInspectorPanelComponent,
   };
-  readonly emptyContextMenu = () => [];
-
   constructor() {
     super();
     this.bridge.host = this;
