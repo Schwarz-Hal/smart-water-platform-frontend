@@ -16,6 +16,7 @@ import { ApiClient } from '../../core/services/api-client.service';
 import { AuthService } from '../../core/services/auth.service';
 import { NotificationService } from '../../core/services/notification.service';
 import { TaskTrackingHandle, TaskTrackerService } from '../../core/services/task-tracker.service';
+import { OperatorNameService } from '../../core/services/operator-name.service';
 import { BeijingTimePipe } from '../../shared/pipes/beijing-time.pipe';
 import { WorkflowArtifactRendererComponent } from './workflow-artifact-renderer.component';
 
@@ -116,7 +117,7 @@ interface GraphNode {
           <mat-card class="panel"
             ><h2>节点详情</h2>
             @if (selectedNodeRun(); as node) {
-              <h3>{{ node.node_code }}</h3>
+              <h3>{{ operatorNames.displayName(node.node_code, node.node_code) }}</h3>
               <p class="muted">{{ node.node_instance_id }} · {{ node.node_version }}</p>
               <dl>
                 <dt>状态</dt>
@@ -433,6 +434,7 @@ interface GraphNode {
   `,
 })
 export class WorkflowRunDetailPage implements OnDestroy {
+  readonly operatorNames = inject(OperatorNameService);
   private readonly route = inject(ActivatedRoute);
   private readonly api = inject(ApiClient);
   private readonly auth = inject(AuthService);
@@ -521,7 +523,7 @@ export class WorkflowRunDetailPage implements OnDestroy {
     return this.nodes().find((node) => node.node_instance_id === id) ?? null;
   }
   nodeLabel(node: GraphNode): string {
-    return node.node_code.replaceAll('_', ' ');
+    return this.operatorNames.displayName(node.node_code, node.node_code);
   }
   selectNode(id: string): void {
     this.selectedNodeId.set(id);

@@ -6,6 +6,7 @@ import { ActivatedRoute, RouterLink } from '@angular/router';
 import { OperatorSummary, WorkflowTemplateSummary } from '../../core/models/api.models';
 import { ApiClient } from '../../core/services/api-client.service';
 import { NotificationService } from '../../core/services/notification.service';
+import { OperatorNameService } from '../../core/services/operator-name.service';
 
 @Component({
   selector: 'app-operator-center-page',
@@ -63,7 +64,7 @@ import { NotificationService } from '../../core/services/notification.service';
           >
             <span class="status-dot" [class.offline]="!operator.available"></span
             ><span class="row-copy"
-              ><strong>{{ operator.name }}</strong
+              ><strong>{{ operatorNames.displayName(operator.code, operator.name) }}</strong
               ><small>{{ operator.code }} · {{ operator.kind }}</small></span
             ><span class="badge">{{ operator.active_version?.version || '—' }}</span>
           </button>
@@ -77,7 +78,7 @@ import { NotificationService } from '../../core/services/notification.service';
           <div class="detail-head">
             <div>
               <p class="eyebrow">{{ operator.kind }}</p>
-              <h2>{{ operator.name }}</h2>
+              <h2>{{ operatorNames.displayName(operator.code, operator.name) }}</h2>
               <code>{{ operator.code }}</code>
             </div>
             <span class="state" [class.ready]="operator.available">{{
@@ -475,6 +476,7 @@ export class OperatorCenterPage {
   private readonly api = inject(ApiClient);
   private readonly route = inject(ActivatedRoute);
   private readonly notice = inject(NotificationService);
+  readonly operatorNames = inject(OperatorNameService);
   readonly operators = signal<OperatorSummary[]>([]);
   readonly templates = signal<WorkflowTemplateSummary[]>([]);
   readonly selected = signal<OperatorSummary | null>(null);

@@ -32,6 +32,10 @@ export class ApiClient {
     return this.http.put<ApiEnvelope<T>>(path, body).pipe(map((response) => response.data));
   }
 
+  download(path: string): Observable<Blob> {
+    return this.http.get(path, { responseType: 'blob' });
+  }
+
   private params(query?: Record<string, QueryValue>): HttpParams {
     return Object.entries(query ?? {}).reduce((params, [key, value]) => {
       return value === undefined || value === null ? params : params.set(key, String(value));

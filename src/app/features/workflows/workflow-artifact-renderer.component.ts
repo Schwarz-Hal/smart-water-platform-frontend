@@ -1,21 +1,25 @@
 import { DecimalPipe, JsonPipe } from '@angular/common';
-import { Component, Input } from '@angular/core';
+import { Component, Input, inject } from '@angular/core';
 
 import { WorkflowArtifact } from '../../core/models/api.models';
+import { OperatorNameService } from '../../core/services/operator-name.service';
 import {
   TimeSeriesChartComponent,
   TimeSeriesLine,
 } from '../../shared/components/time-series-chart.component';
+import { S01LeakageReportComponent } from './s01-leakage-report.component';
+import { candidateMeanRisk, candidateRisk } from './s01-leakage-report';
 
 @Component({
   selector: 'app-workflow-artifact-renderer',
-  imports: [DecimalPipe, JsonPipe, TimeSeriesChartComponent],
+  imports: [DecimalPipe, JsonPipe, S01LeakageReportComponent, TimeSeriesChartComponent],
   template: `
     @if (artifact; as item) {
       <section class="artifact-head">
         <div>
           <strong
-            >{{ item.node_code || item.node_instance_id || '节点' }} · {{ item.port_key }}</strong
+            >{{ operatorNames.displayName(item.node_code, item.node_instance_id || '节点') }} ·
+            {{ item.port_key }}</strong
           >
           <small>{{ item.data_type }}{{ item.unit ? ' · ' + item.unit : '' }}</small>
         </div>
@@ -41,7 +45,8 @@ import {
               <tr>
                 <th>开始</th>
                 <th>结束</th>
-                <th>风险分数</th>
+                <th>最高风险</th>
+                <th>平均风险</th>
                 <th>状态</th>
               </tr>
             </thead>
@@ -50,7 +55,8 @@ import {
                 <tr>
                   <td>{{ text(row['start_time'] ?? row['start'] ?? '—') }}</td>
                   <td>{{ text(row['end_time'] ?? row['end'] ?? '—') }}</td>
-                  <td>{{ number(row['risk_score'] ?? row['score']) | number: '1.2-3' }}</td>
+                  <td>{{ candidateRisk(row) | number: '1.2-3' }}</td>
+                  <td>{{ candidateMeanRisk(row) | number: '1.2-3' }}</td>
                   <td>{{ text(row['status'] ?? 'pending') }}</td>
                 </tr>
               }
@@ -83,6 +89,8 @@ import {
           <strong>{{ scalarValue(item) }}</strong
           ><span>{{ item.semantic_type || item.data_type }}</span>
         </div>
+      } @else if (item.data_type === 'report' && item.semantic_type === 'leakage_report') {
+        <app-s01-leakage-report [artifact]="item" />
       } @else if (item.data_type === 'report') {
         <div class="report">
           <h3>评估摘要</h3>
@@ -185,7 +193,10 @@ import {
   `,
 })
 export class WorkflowArtifactRendererComponent {
+  readonly operatorNames = inject(OperatorNameService);
   @Input() artifact: WorkflowArtifact | null = null;
+  candidateRisk = candidateRisk;
+  candidateMeanRisk = candidateMeanRisk;
 
   payload(item: WorkflowArtifact): unknown {
     return item.payload ?? item.preview;

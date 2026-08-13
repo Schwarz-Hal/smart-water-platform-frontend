@@ -13,6 +13,7 @@ import { MatButtonModule } from '@angular/material/button';
 
 import { DataAssetSelection } from '../../core/models/api.models';
 import { DataAssetPickerComponent } from '../../shared/components/data-asset-picker.component';
+import { OperatorNameService } from '../../core/services/operator-name.service';
 import {
   OperatorParameterFormComponent,
   ParameterSchema,
@@ -41,6 +42,7 @@ export interface WorkflowEditorPanelHost {
   attachEditorHost(element: HTMLDivElement): void;
   detachEditorHost(element: HTMLDivElement): void;
   fitView(): Promise<void>;
+  refreshEditorViewport(): void;
   undo(): void;
   redo(): void;
   parameterEntries(node: EditorNode): Array<{ key: string; value: unknown }>;
@@ -100,7 +102,7 @@ export class WorkflowEditorPanelBridge {
                   >
                     <i [class.gpu]="item.runtime_type === 'builtin_gpu'"></i>
                     <span
-                      ><b>{{ item.node_name }}</b
+                      ><b>{{ operatorNames.displayName(item.node_code, item.node_name) }}</b
                       ><small>{{ item.node_code }}</small></span
                     >
                   </button>
@@ -228,6 +230,7 @@ export class WorkflowEditorPanelBridge {
 })
 export class OperatorCatalogPanelComponent {
   readonly host = inject(WorkflowEditorPanelBridge).requireHost();
+  readonly operatorNames = inject(OperatorNameService);
   search = '';
   private readonly openCategories = new Set([
     'data_source',
@@ -250,7 +253,7 @@ export class OperatorCatalogPanelComponent {
     const term = this.search.trim().toLowerCase();
     const groups = new Map<string, Definition[]>();
     for (const item of this.host.definitions()) {
-      if (term && !`${item.node_name} ${item.node_code}`.toLowerCase().includes(term)) continue;
+      if (term && !this.operatorNames.matches(item.node_code, item.node_name, term)) continue;
       groups.set(item.category, [...(groups.get(item.category) ?? []), item]);
     }
     return ['data_source', 'transform', 'algorithm', 'control', 'output', 'composite']
@@ -375,7 +378,7 @@ export class WorkflowCanvasPanelComponent implements AfterViewInit, OnDestroy {
       @if (host.selectedNode(); as node) {
         <header>
           <span>节点属性</span>
-          <h2>{{ node.definition?.node_name || node.node_code }}</h2>
+          <h2>{{ operatorNames.displayName(node.node_code, node.definition?.node_name) }}</h2>
         </header>
         <small>{{ node.node_code }} · {{ node.node_version }}</small>
         <p>{{ node.definition?.description }}</p>
@@ -517,4 +520,5 @@ export class WorkflowCanvasPanelComponent implements AfterViewInit, OnDestroy {
 })
 export class NodeInspectorPanelComponent {
   readonly host = inject(WorkflowEditorPanelBridge).requireHost();
+  readonly operatorNames = inject(OperatorNameService);
 }
