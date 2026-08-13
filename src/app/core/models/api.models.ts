@@ -345,7 +345,7 @@ export interface S01NodeRun {
 export interface S01Candidate {
   id: number;
   assessment_run_id: string;
-  node_run_id: number | null;
+  node_run_id?: number | null;
   start_time: string | null;
   end_time: string | null;
   risk_score: number;
@@ -366,6 +366,7 @@ export interface DatasetVersion {
   version_kind?: 'imported' | 'derived' | string;
   storage_backend?: 'mysql' | 'parquet' | string;
   version_note?: string | null;
+  is_synthetic?: boolean;
 }
 
 /** A user-visible data asset. The id remains an internal API reference. */
@@ -387,16 +388,19 @@ export interface DataAsset {
 }
 
 export interface DataQualityReport {
-  id: string;
+  report_id: string;
+  id?: string;
   dataset_version_id: number;
   workflow_run_id: string | null;
+  task_id?: string | null;
+  trigger_type?: string;
   node_run_id: number | null;
   score: number;
   grade: 'A' | 'B' | 'C' | 'D' | string;
   dimensions: Record<string, number>;
   issue_summary: Record<string, number>;
   trace_id: string;
-  sha256: string;
+  sha256?: string;
   created_at: string;
   report?: Record<string, unknown>;
 }
@@ -407,6 +411,32 @@ export interface DatasetLineage {
   created_by_task_id: string | null;
   workflow_run_id: string | null;
   workflow_graph: Record<string, unknown> | null;
+}
+
+export interface DatasetLineageTreeNode {
+  version_id: number;
+  parent_version_id: number | null;
+  version_code: string;
+  version_kind: string;
+  operation_code: string;
+  operation_name: string;
+  is_synthetic: boolean;
+  record_count: number;
+  time_start: string | null;
+  time_end: string | null;
+  quality: DataQualityReport | null;
+  created_by_task_id: string | null;
+  workflow_run_id: string | null;
+  version_note: string | null;
+  created_at: string;
+}
+
+export interface DatasetLineageTree {
+  dataset_id: number;
+  current_version_id: number | null;
+  roots: number[];
+  nodes: DatasetLineageTreeNode[];
+  edges: Array<{ from: number; to: number }>;
 }
 
 export interface DatasetChannel {
@@ -441,6 +471,28 @@ export interface CsvUploadDraft {
   sample_rows: Record<string, string>[];
   encoding: string;
   size_bytes: number;
+  duplicate?: {
+    detected: boolean;
+    matching_asset_count: number;
+    matching_assets: Array<{ id: number; name: string }>;
+  };
+  mapping_suggestion?: CsvMappingSuggestion;
+}
+
+export interface CsvMappingSuggestion {
+  point_column?: { column: string; confidence: number; reason: string } | null;
+  time_column?: { column: string; confidence: number; reason: string } | null;
+  record_id_column?: { column: string; confidence: number; reason: string } | null;
+  metrics: Array<{
+    code: string;
+    name: string;
+    unit: string | null;
+    raw_column: string;
+    confidence: number;
+    reason: string;
+  }>;
+  warnings: string[];
+  requires_confirmation: boolean;
 }
 
 export interface CsvMetricMapping {
@@ -458,6 +510,7 @@ export interface CsvImportMapping {
   time_column: string;
   record_id_column?: string | null;
   metrics: CsvMetricMapping[];
+  auto_quality_profile?: boolean;
 }
 
 export type QueryValue = string | number | boolean | null | undefined;
@@ -577,6 +630,9 @@ export interface WorkflowTemplateSummary {
   outputs: string[];
   node_count: number;
   edge_count: number;
+  category?: 'quality' | 'governance' | 'simulation' | 'scenario' | string;
+  data_scope?: string;
+  produces_dataset_version?: boolean;
 }
 
 export interface RuntimeProfile {
