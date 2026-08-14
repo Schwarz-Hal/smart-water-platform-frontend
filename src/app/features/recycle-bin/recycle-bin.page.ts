@@ -1,4 +1,4 @@
-import { Component, inject, signal } from '@angular/core';
+import { Component, inject, OnDestroy, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
 import { MatCheckboxModule } from '@angular/material/checkbox';
@@ -47,6 +47,8 @@ import { BeijingTimePipe } from '../../shared/pipes/beijing-time.pipe';
         ><mat-label>状态</mat-label
         ><mat-select [(ngModel)]="status" (selectionChange)="load(1)"
           ><mat-option value="">待处理</mat-option><mat-option value="trashed">回收中</mat-option
+          ><mat-option value="waiting_for_terminal">等待任务结束</mat-option
+          ><mat-option value="waiting_for_dependency">等待依赖</mat-option
           ><mat-option value="purge_failed">清理失败</mat-option
           ><mat-option value="purging">清理中</mat-option></mat-select
         ></mat-form-field
@@ -68,7 +70,7 @@ import { BeijingTimePipe } from '../../shared/pipes/beijing-time.pipe';
         <div class="row">
           <mat-checkbox
             [checked]="selected().has(item.item_id)"
-            [disabled]="item.status === 'purging'"
+            [disabled]="!item.can_purge"
             (change)="toggle(item.item_id)"
           />
           <div>
@@ -78,14 +80,14 @@ import { BeijingTimePipe } from '../../shared/pipes/beijing-time.pipe';
           <span>{{ resourceLabel(item.resource_type) }}</span
           ><span>{{ item.deleted_at | beijingTime }}</span>
           <div>
-            <b>{{ remaining(item) }}</b
+            <b>{{ item.state_message || statusLabel(item.status) }}</b
             ><small>{{ item.purge_after | beijingTime }}</small>
           </div>
           <div class="actions">
-            <button mat-button [disabled]="item.status === 'purging'" (click)="restore(item)">
+            <button mat-button [disabled]="!item.can_restore" (click)="restore(item)">
               恢复</button
-            ><button mat-button [disabled]="item.status === 'purging'" (click)="purge(item)">
-              清理
+            ><button mat-button [disabled]="!item.can_purge" (click)="purge(item)">
+              {{ item.can_retry ? '重新清理' : '清理' }}
             </button>
           </div>
         </div>
@@ -204,7 +206,7 @@ import { BeijingTimePipe } from '../../shared/pipes/beijing-time.pipe';
     }
   `,
 })
-export class RecycleBinPage {
+export class RecycleBinPage implements OnDestroy {
   private readonly api = inject(ApiClient);
   private readonly notifications = inject(NotificationService);
   readonly pageData = signal<RecyclePageData>({ items: [], page: 1, page_size: 20, total: 0 });
@@ -219,6 +221,7 @@ export class RecycleBinPage {
   ];
   resourceType = '';
   status = '';
+  private refreshTimer: ReturnType<typeof setTimeout> | undefined;
   constructor() {
     this.load();
   }
@@ -234,12 +237,26 @@ export class RecycleBinPage {
         next: (value) => {
           this.pageData.set(value);
           this.selected.set(new Set());
+          this.scheduleRefresh();
         },
         error: (error) => this.notifications.error(error, '无法读取回收站。'),
       });
   }
   resourceLabel(code: string): string {
     return this.resourceTypes.find((item) => item.code === code)?.label || code;
+  }
+  statusLabel(status: RecycleBinItem['status']): string {
+    return (
+      {
+        trashed: '等待清理',
+        waiting_for_terminal: '等待任务结束',
+        waiting_for_dependency: '等待关联资源',
+        purging: '正在清理',
+        purge_failed: '清理失败',
+        restored: '已恢复',
+        purged: '已清理',
+      }[status] || status
+    );
   }
   remaining(item: RecycleBinItem): string {
     const milliseconds = new Date(item.purge_after).getTime() - Date.now();
@@ -252,6 +269,7 @@ export class RecycleBinPage {
     this.selected.set(next);
   }
   restore(item: RecycleBinItem): void {
+    if (!item.can_restore) return;
     this.api
       .post<RecycleBinItem, object>(`/api/v1/recycle-bin/${item.item_id}/restore`, {})
       .subscribe({
@@ -263,14 +281,18 @@ export class RecycleBinPage {
       });
   }
   purge(item: RecycleBinItem): void {
+    if (!item.can_purge) return;
     if (window.confirm(`永久清理“${item.resource_name}”？此操作不可撤销。`))
       this.queuePurge([item.item_id]);
   }
   restoreSelected(): void {
-    if (!window.confirm(`恢复选中的 ${this.selected().size} 项资源？`)) return;
+    const itemIds = this.pageData()
+      .items.filter((item) => this.selected().has(item.item_id) && item.can_restore)
+      .map((item) => item.item_id);
+    if (!itemIds.length || !window.confirm(`恢复选中的 ${itemIds.length} 项资源？`)) return;
     this.api
       .post<{ restored: number }, { item_ids: string[] }>('/api/v1/recycle-bin/restore', {
-        item_ids: [...this.selected()],
+        item_ids: itemIds,
       })
       .subscribe({
         next: () => {
@@ -281,8 +303,11 @@ export class RecycleBinPage {
       });
   }
   purgeSelected(): void {
-    if (window.confirm(`永久清理选中的 ${this.selected().size} 项资源？`))
-      this.queuePurge([...this.selected()]);
+    const itemIds = this.pageData()
+      .items.filter((item) => this.selected().has(item.item_id) && item.can_purge)
+      .map((item) => item.item_id);
+    if (itemIds.length && window.confirm(`永久清理选中的 ${itemIds.length} 项资源？`))
+      this.queuePurge(itemIds);
   }
   emptyBin(): void {
     const confirmation = window.prompt('输入“清空回收站”以永久清理全部资源。');
@@ -312,5 +337,15 @@ export class RecycleBinPage {
         },
         error: (error) => this.notifications.error(error),
       });
+  }
+  private scheduleRefresh(): void {
+    if (this.refreshTimer) clearTimeout(this.refreshTimer);
+    if (!this.pageData().items.some((item) => ['purging', 'waiting_for_terminal', 'waiting_for_dependency'].includes(item.status))) {
+      return;
+    }
+    this.refreshTimer = setTimeout(() => this.load(), 3000);
+  }
+  ngOnDestroy(): void {
+    if (this.refreshTimer) clearTimeout(this.refreshTimer);
   }
 }
