@@ -1948,9 +1948,9 @@ export class WorkflowEditorPage implements AfterViewInit, OnDestroy {
   save(): void {
     this.busy.set(true);
     const body = {
-      workflow_code: `s01_dag_${Date.now()}`,
-      workflow_name: 'S01 漏损评估流程',
-      description: '由 DAG 编辑器保存的 S01 模板',
+      workflow_code: `workflow_${Date.now()}`,
+      workflow_name: '新建工作流',
+      description: '从空白画布开始的工作流',
       visibility: 'private',
       graph: this.graph(),
     };

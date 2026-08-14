@@ -112,7 +112,7 @@ interface WorkflowItem {
           </div>
         </article>
       } @empty {
-        <div class="empty">没有符合条件的工作流。可以新建一个 S01 流程开始。</div>
+        <div class="empty">没有符合条件的工作流。可以从空白画布或内置结构开始。</div>
       }
     </section>
     @if (versionWorkflow(); as workflow) {
@@ -423,28 +423,9 @@ export class WorkflowLibraryPage {
       });
   }
   create(): void {
-    this.api
-      .get<{ graph: Record<string, unknown> }>('/api/v1/workflows/templates/s01-leakage')
-      .subscribe({
-        next: (template) => {
-          const name = window.prompt('工作流名称', 'S01 漏损评估流程');
-          if (!name?.trim()) return;
-          const code = `workflow_${Date.now()}`;
-          this.api
-            .post<WorkflowItem, object>('/api/v1/workflows', {
-              workflow_code: code,
-              workflow_name: name.trim(),
-              description: 'S01 漏损评估流程',
-              visibility: 'private',
-              graph: template.graph,
-            })
-            .subscribe({
-              next: (workflow) => void this.router.navigate(['/workflows', workflow.id, 'edit']),
-              error: () => this.message.set('创建草稿失败。'),
-            });
-        },
-        error: () => this.message.set('无法加载初始模板。'),
-      });
+    // All new workflows go through the starter wizard.  The old direct-create
+    // path silently loaded the legacy S01 graph and bypassed the blank starter.
+    void this.router.navigate(['/workflows/new']);
   }
   edit(item: WorkflowItem): void {
     if (!item.deleted_at) void this.router.navigate(['/workflows', item.id, 'edit']);
