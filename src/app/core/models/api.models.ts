@@ -217,13 +217,25 @@ export interface RecycleBinItem {
   owner_user_id: number | null;
   deleted_by_user_id: number | null;
   deletion_batch_id: string | null;
-  status: 'trashed' | 'purging' | 'purge_failed' | 'restored' | 'purged';
+  status:
+    | 'trashed'
+    | 'waiting_for_terminal'
+    | 'waiting_for_dependency'
+    | 'purging'
+    | 'purge_failed'
+    | 'restored'
+    | 'purged';
   summary: Record<string, unknown>;
   deleted_at: string;
   purge_after: string;
   restored_at: string | null;
   purged_at: string | null;
   error_message: string | null;
+  state_code?: string;
+  state_message?: string;
+  can_restore?: boolean;
+  can_purge?: boolean;
+  can_retry?: boolean;
 }
 
 export interface RecycleBinPage {
