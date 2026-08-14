@@ -15,6 +15,7 @@ import { ApiClient } from '../../core/services/api-client.service';
 import { AuthService } from '../../core/services/auth.service';
 import { NotificationService } from '../../core/services/notification.service';
 import { StatusChipComponent } from '../../shared/components/status-chip.component';
+import { DatasetLineageTreeComponent } from '../../shared/components/dataset-lineage-tree.component';
 import { BeijingTimePipe } from '../../shared/pipes/beijing-time.pipe';
 
 @Component({
@@ -26,6 +27,7 @@ import { BeijingTimePipe } from '../../shared/pipes/beijing-time.pipe';
     MatButtonModule,
     RouterLink,
     StatusChipComponent,
+    DatasetLineageTreeComponent,
   ],
   template: `
     @if (asset(); as item) {
@@ -75,7 +77,7 @@ import { BeijingTimePipe } from '../../shared/pipes/beijing-time.pipe';
               </div>
               @if (versions().length > 1) {
                 <button mat-stroked-button type="button" (click)="showHistory.set(!showHistory())">
-                  {{ showHistory() ? '收起历史版本' : '历史版本 / 高级选项' }}
+                  {{ showHistory() ? '收起版本列表' : '版本列表 / 高级选项' }}
                 </button>
               }
             </div>
@@ -100,15 +102,11 @@ import { BeijingTimePipe } from '../../shared/pipes/beijing-time.pipe';
             }
             <h3>数据血缘</h3>
             @if (lineageTree(); as tree) {
-              <div class="lineage-tree">
-                @for (node of tree.nodes; track node.version_id) {
-                  <div class="lineage-node" [class.current]="node.version_id === tree.current_version_id">
-                    <strong>{{ node.operation_name }}</strong>
-                    <span>{{ node.is_synthetic ? '模拟扩展' : node.version_kind === 'imported' ? '初始导入' : '派生版本' }} · {{ node.record_count }} 条</span>
-                    @if (node.quality) { <small>质量 {{ node.quality.grade }} · {{ node.quality.score.toFixed(1) }}</small> }
-                  </div>
-                }
-              </div>
+              <app-dataset-lineage-tree
+                [tree]="tree"
+                [selectedVersionId]="selectedVersion()?.id ?? null"
+                (versionSelected)="selectVersionById($event)"
+              />
             }
             @if (lineage(); as value) {
               <p>
@@ -230,10 +228,6 @@ import { BeijingTimePipe } from '../../shared/pipes/beijing-time.pipe';
       grid-template-columns: repeat(2, minmax(0, 1fr));
       gap: 10px;
     }
-    .lineage-tree { display: grid; gap: 8px; margin: 12px 0 20px; }
-    .lineage-node { padding: 10px 12px; border-left: 4px solid #94a3b8; background: #f8fafc; border-radius: 8px; }
-    .lineage-node.current { border-left-color: #0f67c9; background: #eff6ff; }
-    .lineage-node span, .lineage-node small { display: block; color: #64748b; margin-top: 3px; }
     .channels div {
       padding: 12px;
       background: #f8fafc;
@@ -306,6 +300,14 @@ export class DatasetDetailPage {
       },
       error: (error) => this.notifications.error(error, '无法读取数据版本。'),
     });
+    this.api.get<DatasetLineageTree>(`/api/v1/datasets/${this.datasetId}/lineage`).subscribe({
+      next: (tree) => {
+        this.lineageTree.set(tree);
+        const current = this.versions().find((version) => version.id === tree.current_version_id);
+        if (current && this.selectedVersion()?.id !== current.id) this.selectVersion(current);
+      },
+      error: (error) => this.notifications.error(error, '无法读取数据版本血缘。'),
+    });
   }
   selectVersion(version: DatasetVersion): void {
     this.selectedVersion.set(version);
@@ -318,9 +320,11 @@ export class DatasetDetailPage {
     this.api
       .get<DatasetLineage>(`/api/v1/dataset-versions/${version.id}/lineage`)
       .subscribe((value) => this.lineage.set(value));
-    this.api
-      .get<DatasetLineageTree>(`/api/v1/datasets/${this.datasetId}/lineage`)
-      .subscribe((value) => this.lineageTree.set(value));
+  }
+
+  selectVersionById(versionId: number): void {
+    const version = this.versions().find((candidate) => candidate.id === versionId);
+    if (version) this.selectVersion(version);
   }
 
   versionLabel(version: DatasetVersion): string {
