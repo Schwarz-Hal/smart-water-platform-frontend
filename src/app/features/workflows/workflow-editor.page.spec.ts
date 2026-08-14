@@ -116,6 +116,38 @@ describe('WorkflowEditorPage', () => {
     expect(page.bindingsReady()).toBe(true);
   });
 
+  it('drops connections whose node or port is no longer available', () => {
+    const page = TestBed.createComponent(WorkflowEditorPage).componentInstance;
+
+    page.loadGraph({
+      contract_version: '1.0',
+      nodes: [
+        {
+          id: 'source',
+          node_code: 'dataset_channel_v1',
+          node_version: '1.0.0',
+          parameters: {},
+        },
+        {
+          id: 'retired-node',
+          node_code: 's01_assessment_v1',
+          node_version: '1.0.0',
+          parameters: {},
+        },
+      ],
+      edges: [
+        {
+          source: { node_id: 'source', port: 'series' },
+          target: { node_id: 'retired-node', port: 'inlet_flow' },
+        },
+      ],
+      outputs: [],
+    });
+
+    expect(page.graph().edges).toEqual([]);
+    expect(page.message()).toContain('1 条无效连接');
+  });
+
   it('keeps a dedicated message row so the workspace remains in the flexible grid row', async () => {
     asyncApiResponses = true;
     globalThis.ResizeObserver ??= class {
