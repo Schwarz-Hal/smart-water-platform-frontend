@@ -1097,6 +1097,7 @@ export class WorkflowEditorPage implements AfterViewInit, OnDestroy {
   private reteNodes = new Map<string, any>();
   private definitionByCode = new Map<string, Definition>();
   private hydratingRete = false;
+  private suppressReteSync = false;
   private subscriptions: Subscription[] = [];
   readonly filteredDefinitions = computed(() => {
     const term = this.search.trim().toLowerCase();
@@ -1431,7 +1432,6 @@ export class WorkflowEditorPage implements AfterViewInit, OnDestroy {
     this.reteArea = undefined;
   }
   loadGraph(graph: Graph): void {
-    this.edges = [...(graph.edges || [])];
     this.graphOutputs = [...(graph.outputs || [])];
     this.bindings.clear();
     this.bindingSelections.clear();
@@ -1441,26 +1441,61 @@ export class WorkflowEditorPage implements AfterViewInit, OnDestroy {
       this.bindingSelections.set(nodeId, this.selectionHint(binding));
     }
     this.bindingRevision.update((value) => value + 1);
-    this.nodes.set(
-      (graph.nodes || []).map((raw, index) => {
-        const ui = (raw['ui'] || {}) as Record<string, unknown>;
-        const position = (ui['position'] || {}) as Record<string, unknown>;
-        return {
-          id: String(raw['id']),
-          node_code: String(raw['node_code']),
-          node_version: String(raw['node_version']),
-          parameters: (raw['parameters'] as Record<string, unknown>) || {},
-          x: Number(position['x'] ?? 34 + (index % 2) * 285),
-          y: Number(position['y'] ?? 30 + Math.floor(index / 2) * 145),
-          collapsed: Boolean(ui['collapsed'] ?? false),
-          definition: this.definitionByCode.get(String(raw['node_code'])),
-        };
-      }),
-    );
+    const loadedNodes = (graph.nodes || []).map((raw, index) => {
+      const ui = (raw['ui'] || {}) as Record<string, unknown>;
+      const position = (ui['position'] || {}) as Record<string, unknown>;
+      return {
+        id: String(raw['id']),
+        node_code: String(raw['node_code']),
+        node_version: String(raw['node_version']),
+        parameters: (raw['parameters'] as Record<string, unknown>) || {},
+        x: Number(position['x'] ?? 34 + (index % 2) * 285),
+        y: Number(position['y'] ?? 30 + Math.floor(index / 2) * 145),
+        collapsed: Boolean(ui['collapsed'] ?? false),
+        definition: this.definitionByCode.get(String(raw['node_code'])),
+      };
+    });
+    this.nodes.set(loadedNodes);
+    const originalEdgeCount = (graph.edges || []).length;
+    this.edges = this.sanitizeEdges(loadedNodes, graph.edges || []);
+    this.graphOutputs = this.graphOutputs.filter((output) => {
+      const node = loadedNodes.find((item) => item.id === output.node_id);
+      return Boolean(node?.definition?.output_ports.some((port) => port.key === output.port));
+    });
+    if (this.edges.length !== originalEdgeCount) {
+      this.messageType.set('info');
+      this.message.set(`已清理 ${originalEdgeCount - this.edges.length} 条无效连接。`);
+    }
     this.selectedId.set(this.nodes()[0]?.id ?? null);
     this.graphLoaded.set(true);
     this.pushHistory(this.graph());
+    if (this.edges.length !== originalEdgeCount) this.markDirty();
     if (this.editorHost) void this.rebuildRete();
+  }
+
+  private sanitizeEdges(nodes: EditorNode[], edges: Edge[]): Edge[] {
+    const byId = new Map(nodes.map((node) => [node.id, node]));
+    const seen = new Set<string>();
+    const valid: Edge[] = [];
+    for (const edge of edges) {
+      const source = byId.get(edge.source?.node_id);
+      const target = byId.get(edge.target?.node_id);
+      const sourcePort = source?.definition?.output_ports.find(
+        (port) => port.key === edge.source?.port,
+      );
+      const targetPort = target?.definition?.input_ports.find(
+        (port) => port.key === edge.target?.port,
+      );
+      if (!source || !target || !sourcePort || !targetPort || source.id === target.id) continue;
+      const key = `${source.id}:${sourcePort.key}->${target.id}:${targetPort.key}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      valid.push({
+        source: { node_id: source.id, port: sourcePort.key },
+        target: { node_id: target.id, port: targetPort.key },
+      });
+    }
+    return valid;
   }
 
   refreshEditorViewport(): void {
@@ -1497,7 +1532,11 @@ export class WorkflowEditorPage implements AfterViewInit, OnDestroy {
     this.hydratingRete = true;
     try {
       for (const item of this.nodes()) await this.addReteNode(item);
-      for (const edge of this.edges) await this.addReteConnection(edge);
+      const loadedEdges: Edge[] = [];
+      for (const edge of this.edges) {
+        if (await this.addReteConnection(edge)) loadedEdges.push(edge);
+      }
+      this.edges = loadedEdges;
       await AreaExtensions.zoomAt(this.reteArea, this.reteEditor.getNodes());
     } finally {
       this.hydratingRete = false;
@@ -1527,6 +1566,7 @@ export class WorkflowEditorPage implements AfterViewInit, OnDestroy {
       }
       if (
         !this.hydratingRete &&
+        !this.suppressReteSync &&
         (context.type === 'connectioncreated' || context.type === 'connectionremoved')
       ) {
         this.syncEdgesFromRete();
@@ -1586,7 +1626,7 @@ export class WorkflowEditorPage implements AfterViewInit, OnDestroy {
   }
   private syncEdgesFromRete(): void {
     if (!this.reteEditor) return;
-    this.edges = this.reteEditor.getConnections().map((connection: any) => ({
+    const nextEdges = this.reteEditor.getConnections().map((connection: any) => ({
       source: {
         node_id: this.backendIdForRete(connection.source) || connection.source,
         port: String(connection.sourceOutput),
@@ -1596,6 +1636,7 @@ export class WorkflowEditorPage implements AfterViewInit, OnDestroy {
         port: String(connection.targetInput),
       },
     }));
+    this.edges = this.sanitizeEdges(this.nodes(), nextEdges);
     this.pushHistory(this.graph());
     this.markDirty();
   }
@@ -1695,11 +1736,23 @@ export class WorkflowEditorPage implements AfterViewInit, OnDestroy {
       (edge) => edge.source.node_id !== id && edge.target.node_id !== id,
     );
     this.graphOutputs = this.graphOutputs.filter((output) => output['node_id'] !== id);
+    this.bindings.delete(id);
+    this.bindingSelections.delete(id);
     const rete = this.reteNodes.get(id);
-    if (rete) {
-      await this.reteEditor?.removeNode(rete.id);
-      this.reteNodes.delete(id);
+    this.suppressReteSync = true;
+    try {
+      const connections = this.reteEditor?.getConnections?.() || [];
+      for (const connection of connections) {
+        const sourceId = this.backendIdForRete(connection.source);
+        const targetId = this.backendIdForRete(connection.target);
+        if (sourceId === id || targetId === id)
+          await this.reteEditor?.removeConnection?.(connection.id);
+      }
+      if (rete) await this.reteEditor?.removeNode(rete.id);
+    } finally {
+      this.suppressReteSync = false;
     }
+    this.reteNodes.delete(id);
     this.selectedId.set(null);
     this.pushHistory(this.graph());
     this.markDirty();
@@ -1763,17 +1816,21 @@ export class WorkflowEditorPage implements AfterViewInit, OnDestroy {
     this.markDirty();
   }
   graph(): Graph {
+    const nodes = this.nodes();
     return {
       contract_version: '1.0',
-      nodes: this.nodes().map(({ id, node_code, node_version, parameters, x, y, collapsed }) => ({
+      nodes: nodes.map(({ id, node_code, node_version, parameters, x, y, collapsed }) => ({
         id,
         node_code,
         node_version,
         parameters,
         ui: { position: { x, y }, collapsed },
       })),
-      edges: this.edges,
-      outputs: this.graphOutputs,
+      edges: this.sanitizeEdges(nodes, this.edges),
+      outputs: this.graphOutputs.filter((output) => {
+        const node = nodes.find((item) => item.id === output.node_id);
+        return Boolean(node?.definition?.output_ports.some((port) => port.key === output.port));
+      }),
       bindings: Object.fromEntries(this.bindings.entries()),
     };
   }
