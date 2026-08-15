@@ -2,6 +2,8 @@
 
 这是连接 FastAPI 后端的 Angular 21 前端工程，覆盖认证、私有数据资产、算子中心、可视化工作流、异步运行和结果追溯。算法运行统一通过工作流完成；S01 候选结果仍须结合现场与业务规则人工核验。
 
+参与开发前请先阅读 [前端贡献指南](CONTRIBUTING.md)，其中说明了当前项目的模块边界、前后端协作方式、提交检查和 CI 流程。
+
 ## 技术边界
 
 - Angular 21（Standalone Components、Router、Signals）与 Angular Material。
