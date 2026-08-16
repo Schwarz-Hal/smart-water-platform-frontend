@@ -161,12 +161,13 @@ export class AppShellComponent {
   readonly workspace = signal(false);
   private readonly items: NavigationItem[] = [
     { label: '平台概览', route: '/dashboard' },
+    { label: '场景中心', route: '/scenes', permission: 'workflow:read' },
     { label: '数据源与导入', route: '/data-sources', permission: 'data_source:read' },
     { label: '算子中心', route: '/operators', permission: 'operator:read' },
     { label: '工作流', route: '/workflows', permission: 'workflow:read' },
     { label: '工作流运行记录', route: '/workflow-runs', permission: 'workflow:read' },
     { label: '任务中心', route: '/tasks', permission: 'task:read' },
-    { label: '用户与角色', route: '/users', permission: 'user:manage' },
+    { label: '用户管理', route: '/users', permission: 'user:manage' },
     { label: '资源回收站', route: '/recycle-bin', permission: 'recycle:manage' },
   ];
   readonly visibleItems = computed(() =>

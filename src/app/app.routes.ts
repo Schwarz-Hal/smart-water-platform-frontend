@@ -19,6 +19,13 @@ export const routes: Routes = [
           import('./features/dashboard/dashboard.page').then((m) => m.DashboardPage),
       },
       {
+        path: 'scenes',
+        loadComponent: () =>
+          import('./features/scenes/scenes.page').then((m) => m.ScenesPage),
+        canActivate: [permissionGuard],
+        data: { permission: 'workflow:read' },
+      },
+      {
         path: 'data-sources',
         loadComponent: () =>
           import('./features/data-sources/data-sources.page').then((m) => m.DataSourcesPage),
