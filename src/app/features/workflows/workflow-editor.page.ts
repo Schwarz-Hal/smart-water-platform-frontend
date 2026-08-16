@@ -1939,9 +1939,9 @@ export class WorkflowEditorPage implements AfterViewInit, OnDestroy {
           this.busy.set(false);
           result.valid ? this.show('图校验通过。') : this.showError(result.errors.join('；'));
         },
-        error: () => {
+        error: (error: any) => {
           this.busy.set(false);
-          this.showError('图校验请求失败。');
+          this.showError(this.formatWorkflowError(error, '图校验请求失败。'));
         },
       });
   }
@@ -1976,7 +1976,7 @@ export class WorkflowEditorPage implements AfterViewInit, OnDestroy {
         this.autosaveState.set(
           error?.status === 409 ? 'conflict' : error?.status === 422 ? 'dirty' : 'offline',
         );
-        this.showError(this.draftSaveErrorMessage(error));
+        this.showError(this.formatWorkflowError(error, '草稿保存失败，请检查图结构和权限。'));
       },
     });
   }
@@ -1990,9 +1990,9 @@ export class WorkflowEditorPage implements AfterViewInit, OnDestroy {
           this.publishedVersionId.set(version.id);
           this.show(`已发布版本 #${version.id}。`);
         },
-        error: () => {
+        error: (error: any) => {
           this.busy.set(false);
-          this.showError('发布失败，请先保存并通过校验。');
+          this.showError(this.formatWorkflowError(error, '发布失败，请先保存并通过校验。'));
         },
       });
   }
@@ -2110,5 +2110,42 @@ export class WorkflowEditorPage implements AfterViewInit, OnDestroy {
     this.messageType.set('error');
     this.message.set(text);
     this.notice.error(text);
+  }
+  private formatWorkflowError(error: unknown, fallback: string): string {
+    if (!(error instanceof Object)) return fallback;
+
+    const errBody = (error as any).error;
+    const detail = errBody?.detail;
+
+    // 解析结构化错误
+    if (detail && typeof detail === 'object' && detail.code) {
+      const codeMap: Record<string, string> = {
+        WORKFLOW_BINDING_INVALID: '数据绑定不合法，请检查所有数据通道的绑定配置',
+        WORKFLOW_BINDING_MISSING: '存在未绑定的数据通道，请完成所有数据节点的绑定',
+        WORKFLOW_BINDING_DUPLICATE:
+          '多个业务角色绑定了同一条数据通道，请为不同角色选择不同的指标通道',
+        WORKFLOW_GRAPH_INVALID: '流程图结构校验失败，请检查节点连线是否完整',
+        WORKFLOW_REVISION_CONFLICT: '草稿已被其他页面修改，请刷新后重试',
+      };
+
+      const mainMsg = codeMap[detail.code] ?? detail.message ?? fallback;
+      if (!detail.errors?.length) return mainMsg;
+
+      // 拼接子错误
+      const subMsgs = detail.errors
+        .slice(0, 2)
+        .map((e: any) =>
+          e.node_id
+            ? `${e.node_id}: ${codeMap[e.code] ?? e.message}`
+            : (codeMap[e.code] ?? e.message),
+        );
+      if (detail.errors.length > 2) {
+        subMsgs.push(`另有 ${detail.errors.length - 2} 项错误`);
+      }
+      return `${mainMsg}：${subMsgs.join('；')}`;
+    }
+
+    // 兼容字符串错误
+    return typeof detail === 'string' ? detail : (errBody?.message ?? fallback);
   }
 }
