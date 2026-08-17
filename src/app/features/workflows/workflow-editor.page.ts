@@ -1373,13 +1373,32 @@ export class WorkflowEditorPage implements AfterViewInit, OnDestroy {
             next: (workflow) => {
               this.workflowName.set(String(workflow['workflow_name'] || '工作流编辑器'));
               this.draftRevision.set(Number(workflow['draft_revision'] || 1));
+              const baseVersionId = Number(workflow['draft_base_version_id']);
+              this.publishedVersionId.set(Number.isInteger(baseVersionId) ? baseVersionId : null);
               this.loadGraph(workflow['draft_graph'] as Graph);
+              this.restoreLatestPublishedVersion(Number(workflowId));
               this.checkRecovery(workflow);
             },
             error: () => this.showError('工作流草稿加载失败，可能已被删除或你没有访问权限。'),
           });
         },
         error: () => this.showError('算子目录加载失败，请检查工作流权限。'),
+      });
+  }
+
+  private restoreLatestPublishedVersion(workflowId: number): void {
+    this.api
+      .get<Array<{ id: number; version: number; status: string }>>(
+        `/api/v1/workflows/${workflowId}/versions`,
+      )
+      .subscribe({
+        next: (versions) => {
+          const latest = (versions || [])
+            .filter((version) => version.status === 'published' || version.status === 'validated')
+            .sort((left, right) => right.version - left.version)[0];
+          this.publishedVersionId.set(latest?.id ?? null);
+        },
+        error: () => this.publishedVersionId.set(null),
       });
   }
   private operatorDefinition(item: OperatorSummary): Definition | null {
@@ -2012,9 +2031,14 @@ export class WorkflowEditorPage implements AfterViewInit, OnDestroy {
           this.show('工作流已提交。');
           if (runId) void this.router.navigate(['/workflow-runs', runId]);
         },
-        error: () => {
+        error: (error: any) => {
           this.busy.set(false);
-          this.showError('工作流提交失败。');
+          const detail = error?.error?.detail;
+          this.showError(
+            typeof detail === 'object' && detail?.message
+              ? String(detail.message)
+              : String(error?.error?.message || detail || '工作流提交失败。'),
+          );
         },
       });
   }

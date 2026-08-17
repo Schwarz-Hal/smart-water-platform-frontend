@@ -43,6 +43,12 @@ describe('WorkflowEditorPage', () => {
             ],
           } as T);
         }
+        if (path.endsWith('/versions')) {
+          return respond([
+            { id: 12, version: 2, status: 'published' },
+            { id: 11, version: 1, status: 'published' },
+          ] as T);
+        }
         return respond({
           id: 1,
           workflow_name: 'Demo',
@@ -114,6 +120,12 @@ describe('WorkflowEditorPage', () => {
       end: '2026-01-02T00:00:00',
     });
     expect(page.bindingsReady()).toBe(true);
+  });
+
+  it('restores the latest published version when reopening an existing workflow', () => {
+    const page = TestBed.createComponent(WorkflowEditorPage).componentInstance;
+
+    expect(page.publishedVersionId()).toBe(12);
   });
 
   it('drops connections whose node or port is no longer available', () => {
