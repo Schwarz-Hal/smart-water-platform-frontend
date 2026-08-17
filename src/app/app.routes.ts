@@ -76,8 +76,17 @@ export const routes: Routes = [
       },
       {
         path: 's01-leakage',
-        redirectTo: 'workflows/new?template=s01_leakage_basic',
-        pathMatch: 'full',
+        loadComponent: () =>
+          import('./features/scenes/s01-leakage-scene.page').then((m) => m.S01LeakageScenePage),
+        canActivate: [permissionGuard],
+        data: { permission: 'workflow:edit' },
+      },
+      {
+        path: 's01/runs/:runId',
+        loadComponent: () =>
+          import('./features/scenes/s01-run-result.page').then((m) => m.S01RunResultPage),
+        canActivate: [permissionGuard],
+        data: { permission: 'workflow:read' },
       },
       {
         path: 'workflows',
