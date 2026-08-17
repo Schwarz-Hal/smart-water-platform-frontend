@@ -19,11 +19,14 @@ import { BeijingTimePipe } from '../../shared/pipes/beijing-time.pipe';
       <header class="page-head">
         <div>
           <p class="eyebrow">异步任务</p>
-          <h1>{{ task.task_type }}</h1>
+          <h1>{{ taskTypeLabel(task.task_type) }}</h1>
           <p class="mono">{{ task.task_id }}</p>
         </div>
         <div class="buttons">
-          @if (task.status === 'success') {
+          @if (task.status === 'success' && isS01(task)) {
+            <button mat-stroked-button type="button" (click)="goS01Result(task)">查看结果</button>
+          }
+          @if (task.status === 'success' && !isS01(task)) {
             <a mat-stroked-button [routerLink]="['/results', task.task_id]">查看结果</a>
           }
           @if (canCancel(task)) {
@@ -31,7 +34,7 @@ import { BeijingTimePipe } from '../../shared/pipes/beijing-time.pipe';
               请求取消
             </button>
           }
-          @if (canRerun(task)) {
+          @if (canRerun(task) && !isS01(task)) {
             <button mat-flat-button type="button" (click)="rerun(task)">重新运行</button>
           }
         </div>
@@ -216,6 +219,48 @@ export class TaskDetailPage implements OnDestroy {
       this.auth.hasPermission('task:rerun') &&
       ['success', 'failed', 'cancelled'].includes(task.status)
     );
+  }
+
+  isS01(task: TaskDetail): boolean {
+    // 兼容两种情况：
+    // 1. 老的 S01 专用接口任务（task_type = s01_assessment）
+    // 2. 新的 workflow 统一接口任务（task_type = workflow，但 localStorage 中有 run_id 映射）
+    if (task.task_type === 's01_assessment') return true;
+    return this.getS01RunId(task.task_id) != null;
+  }
+
+  taskTypeLabel(type: string): string {
+    const map: Record<string, string> = {
+      workflow: '工作流运行',
+      workflow_node: '工作流节点',
+      ingestion: '数据导入',
+      algorithm: '算法运行',
+      s01_assessment: 'DMA 分区漏损评估',
+      algorithm_package_validation: '算法包校验',
+      algorithm_environment_provision: '算法环境制备',
+    };
+    return map[type] || type;
+  }
+
+  private getS01RunId(taskId: string): string | null {
+    try {
+      const map = JSON.parse(localStorage.getItem('s01_task_run_map') || '{}');
+      return map[taskId] || null;
+    } catch {
+      return null;
+    }
+  }
+
+  goS01Result(task: TaskDetail): void {
+    const runId = this.getS01RunId(task.task_id);
+    if (runId) {
+      void this.router.navigate(['/s01/runs', runId]);
+    } else {
+      this.notifications.error(
+        '未找到该任务的 S01 运行记录。请从场景中心重新运行以生成结果链接。',
+        '无法跳转结果',
+      );
+    }
   }
   rerun(task: TaskDetail): void {
     if (!window.confirm('将从原始工作流快照创建一条新任务，是否继续？')) return;

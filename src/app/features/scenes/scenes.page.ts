@@ -262,8 +262,7 @@ export class ScenesPage {
       category: '供水',
       status: 'online',
       icon: '💧',
-      route: '/workflows/new',
-      queryParams: { template: 's01_leakage_basic' },
+      route: '/s01-leakage',
     },
     {
       id: 'water-quality-anomaly',
