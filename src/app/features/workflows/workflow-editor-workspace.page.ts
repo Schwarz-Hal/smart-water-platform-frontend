@@ -119,6 +119,26 @@ type OptionalWorkspacePanelId = Exclude<WorkspacePanelId, 'canvas'>;
           </mat-menu>
           <button mat-stroked-button (click)="resetWorkspaceLayout()">重置工作区</button>
         </div>
+        @if (!guideDismissed()) {
+          <div class="onboarding-guide">
+            <span class="guide-icon">💡</span>
+            <div class="guide-text">
+              <strong>快速上手三步法</strong>
+              <span
+                >① 依次选中左侧 3 个「数据通道」节点绑定数据 → ② 点击「校验图」验证合法性 → ③
+                保存草稿后发布版本</span
+              >
+            </div>
+            <button
+              class="guide-close"
+              type="button"
+              (click)="dismissGuide()"
+              aria-label="关闭指引"
+            >
+              ×
+            </button>
+          </div>
+        }
       </header>
 
       <div class="message-slot" aria-live="polite">
@@ -314,6 +334,69 @@ type OptionalWorkspacePanelId = Exclude<WorkspacePanelId, 'canvas'>;
         flex: 0 0 auto;
       }
     }
+    .onboarding-guide {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 10px 16px;
+      margin: 0 16px 12px;
+      border-radius: var(--sw-radius-md);
+      background: color-mix(in srgb, var(--sw-color-primary) 8%, transparent);
+      border: 1px solid color-mix(in srgb, var(--sw-color-primary) 25%, transparent);
+      color: var(--sw-text-primary);
+      font-size: 13px;
+    }
+
+    .guide-icon {
+      flex: 0 0 auto;
+      font-size: 18px;
+    }
+
+    .guide-text {
+      flex: 1;
+      min-width: 0;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px 12px;
+      align-items: baseline;
+    }
+
+    .guide-text strong {
+      color: var(--sw-color-primary);
+      font-weight: 600;
+    }
+
+    .guide-text span {
+      color: var(--sw-text-secondary);
+    }
+
+    .guide-close {
+      flex: 0 0 auto;
+      width: 24px;
+      height: 24px;
+      display: grid;
+      place-items: center;
+      border: 0;
+      background: transparent;
+      color: var(--sw-text-muted);
+      font-size: 18px;
+      line-height: 1;
+      cursor: pointer;
+      border-radius: 4px;
+      padding: 0;
+    }
+
+    .guide-close:hover {
+      background: var(--sw-surface-raised);
+      color: var(--sw-text-primary);
+    }
+
+    @media (max-width: 720px) {
+      .onboarding-guide {
+        margin: 0 12px 10px;
+        flex-wrap: wrap;
+      }
+    }
   `,
 })
 export class WorkflowEditorWorkspacePage extends WorkflowEditorPage implements OnDestroy {
@@ -325,6 +408,8 @@ export class WorkflowEditorWorkspacePage extends WorkflowEditorPage implements O
   private restoringLayout = false;
   private workspaceInitialized = false;
   private initializationFrame?: number;
+  private readonly guideStorageKey = 'smart-water.workflow.onboarding.dismissed';
+  readonly guideDismissed = signal(this.readGuideDismissed());
   readonly darkWorkspace = signal(false);
   readonly mobile = signal(typeof window !== 'undefined' && window.innerWidth < 800);
   readonly mobileCatalogOpen = signal(false);
@@ -340,6 +425,21 @@ export class WorkflowEditorWorkspacePage extends WorkflowEditorPage implements O
     catalog: OperatorCatalogPanelComponent,
     inspector: NodeInspectorPanelComponent,
   };
+  private readGuideDismissed(): boolean {
+    try {
+      return localStorage.getItem(this.guideStorageKey) === '1';
+    } catch {
+      return false;
+    }
+  }
+  dismissGuide(): void {
+    this.guideDismissed.set(true);
+    try {
+      localStorage.setItem(this.guideStorageKey, '1');
+    } catch {
+      // 忽略存储失败
+    }
+  }
   constructor() {
     super();
     this.bridge.host = this;

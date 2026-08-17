@@ -5,10 +5,23 @@ export interface ApiEnvelope<T> {
   trace_id: string;
 }
 
+// 在现有 ApiFailure基础上补充工作流错误子结构
+export interface WorkflowBindingError {
+  code: string;
+  message: string;
+  node_id?: string;
+}
+
+export interface WorkflowErrorDetail {
+  code: string;
+  errors?: WorkflowBindingError[];
+  message?: string;
+}
+
 export interface ApiFailure {
   code?: string;
   message?: string;
-  detail?: string;
+  detail?: string | WorkflowErrorDetail;
   trace_id?: string;
 }
 
