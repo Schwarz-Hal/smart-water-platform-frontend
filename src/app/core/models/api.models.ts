@@ -627,6 +627,7 @@ export interface OperatorVersionSummary {
   visualization_schema: Record<string, unknown>;
   algorithm: Record<string, unknown> | null;
   available: boolean;
+  runtime_ready?: boolean;
 }
 
 export interface OperatorSummary {
@@ -644,6 +645,25 @@ export interface OperatorSummary {
   active_version: OperatorVersionSummary | null;
   version_count: number;
   versions?: OperatorVersionSummary[];
+}
+
+export interface AlgorithmDocumentVersion {
+  document_version_id: string;
+  version: string;
+  locale: string;
+  source_type: string;
+  status: string;
+  markdown: string | null;
+  created_at: string;
+}
+
+export interface AlgorithmDocument {
+  document_id: string;
+  title: string;
+  doc_kind: string;
+  status: string;
+  current_version_id: string | null;
+  versions: AlgorithmDocumentVersion[];
 }
 
 export interface WorkflowTemplateSummary {

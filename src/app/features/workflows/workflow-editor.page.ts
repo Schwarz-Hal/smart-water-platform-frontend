@@ -46,6 +46,7 @@ export interface Definition {
     required?: string[];
   };
   ui_schema?: Record<string, Record<string, unknown>>;
+  default_params?: Record<string, unknown>;
 }
 export interface EditorNode {
   id: string;
@@ -236,6 +237,9 @@ export class WorkflowEditorPage implements AfterViewInit, OnDestroy {
       output_ports: version.output_ports as unknown as Port[],
       parameter_schema: version.parameter_schema as Definition['parameter_schema'],
       ui_schema: version.ui_schema as Definition['ui_schema'],
+      default_params:
+        ((version.algorithm?.['active_release'] as Record<string, unknown> | null)?.['default_params'] as Record<string, unknown> | undefined) ||
+        (version.algorithm?.['default_params'] as Record<string, unknown> | undefined),
     };
   }
   ngAfterViewInit(): void {
@@ -609,12 +613,13 @@ export class WorkflowEditorPage implements AfterViewInit, OnDestroy {
     return (node.definition?.parameter_schema?.properties?.[key] || {}) as Record<string, any>;
   }
   defaultParameters(definition: Definition): Record<string, unknown> {
-    return Object.fromEntries(
+    const schemaDefaults = Object.fromEntries(
       Object.entries(definition.parameter_schema?.properties || {}).map(([key, schema]) => [
         key,
         schema['default'],
       ]),
     );
+    return { ...schemaDefaults, ...(definition.default_params || {}) };
   }
   coerceNumber(value: unknown, integer: boolean): number {
     const number = Number(value);
