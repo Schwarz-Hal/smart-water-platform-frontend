@@ -1,5 +1,5 @@
 import { CommonModule } from '@angular/common';
-import { Component, inject, signal } from '@angular/core';
+import { Component, HostListener, OnDestroy, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
 import { ActivatedRoute, RouterLink } from '@angular/router';
@@ -21,6 +21,30 @@ import { DataAssetSelection } from '../../core/models/api.models';
 export function linkedAlgorithmCode(operator: OperatorSummary): string | null {
   const value = operator.active_version?.algorithm?.['code'];
   return typeof value === 'string' && value.trim() ? value : null;
+}
+
+interface OperatorFacetOption {
+  code: string;
+  name: string;
+  description?: string | null;
+}
+
+interface OperatorFacetResponse {
+  facets: Record<string, OperatorFacetOption[]>;
+  permissions: string[];
+}
+
+const catalogWidthDefault = 380;
+const catalogWidthMin = 320;
+const catalogWidthRatioMax = 0.45;
+
+export function clampOperatorCatalogWidth(value: number, availableWidth: number): number {
+  const maximum = Math.max(catalogWidthMin, Math.floor(availableWidth * catalogWidthRatioMax));
+  return Math.min(maximum, Math.max(catalogWidthMin, Math.round(value)));
+}
+
+export function countActiveOperatorFilters(filters: Record<string, string>): number {
+  return Object.values(filters).filter(Boolean).length;
 }
 
 @Component({
@@ -62,13 +86,96 @@ export function linkedAlgorithmCode(operator: OperatorSummary): string | null {
         <option value="experimental">实验</option>
         <option value="deprecated">已弃用</option>
       </select>
+      <button
+        class="secondary filter-toggle"
+        type="button"
+        [class.active]="filtersOpen()"
+        (click)="filtersOpen.set(!filtersOpen())"
+      >
+        详细筛选
+        @if (activeFilterCount()) {
+          <span>{{ activeFilterCount() }}</span>
+        }
+      </button>
+      @if (activeFilterCount()) {
+        <button class="text-button" type="button" (click)="resetFilters()">清空筛选</button>
+      }
       <button class="secondary" type="button" (click)="load()">刷新</button>
     </section>
+
+    @if (filtersOpen()) {
+      <section class="filter-panel" aria-label="算子详细筛选">
+        <label>
+          <span>业务领域</span>
+          <select [(ngModel)]="businessDomain" (change)="load()">
+            <option value="">全部领域</option>
+            @for (option of facetOptions('business_domain'); track option.code) {
+              <option [value]="option.code">{{ option.name }}</option>
+            }
+          </select>
+        </label>
+        <label>
+          <span>任务类型</span>
+          <select [(ngModel)]="task" (change)="load()">
+            <option value="">全部任务</option>
+            @for (option of facetOptions('task'); track option.code) {
+              <option [value]="option.code">{{ option.name }}</option>
+            }
+          </select>
+        </label>
+        <label>
+          <span>学习范式</span>
+          <select [(ngModel)]="learning" (change)="load()">
+            <option value="">全部范式</option>
+            @for (option of facetOptions('learning'); track option.code) {
+              <option [value]="option.code">{{ option.name }}</option>
+            }
+          </select>
+        </label>
+        <label>
+          <span>训练要求</span>
+          <select [(ngModel)]="trainingRequirement" (change)="load()">
+            <option value="">全部要求</option>
+            @for (option of facetOptions('training_requirement'); track option.code) {
+              <option [value]="option.code">{{ option.name }}</option>
+            }
+          </select>
+        </label>
+        <label>
+          <span>模型策略</span>
+          <select [(ngModel)]="modelStrategy" (change)="load()">
+            <option value="">全部策略</option>
+            @for (option of facetOptions('model_strategy'); track option.code) {
+              <option [value]="option.code">{{ option.name }}</option>
+            }
+          </select>
+        </label>
+        <label>
+          <span>运行环境</span>
+          <select [(ngModel)]="runtimeType" (change)="load()">
+            <option value="">全部环境</option>
+            <option value="builtin_cpu">内置 CPU</option>
+            <option value="builtin_gpu">内置 GPU</option>
+            <option value="external_cpu">外部 CPU</option>
+          </select>
+        </label>
+        @if (auth.hasPermission('operator:manage')) {
+          <label>
+            <span>算子状态</span>
+            <select [(ngModel)]="status" (change)="load()">
+              <option value="">全部状态</option>
+              <option value="active">已启用</option>
+              <option value="disabled">已停用</option>
+            </select>
+          </label>
+        }
+      </section>
+    }
 
     @if (message()) {
       <div class="message">{{ message() }}</div>
     }
-    <div class="content-grid">
+    <div #catalogLayout class="content-grid" [style.--operator-list-width.px]="listWidth()">
       <section class="operator-list" aria-label="算子列表">
         @for (operator of operators(); track operator.code) {
           <button
@@ -87,6 +194,21 @@ export function linkedAlgorithmCode(operator: OperatorSummary): string | null {
           <div class="empty">暂无符合条件的算子。</div>
         }
       </section>
+
+      <div
+        class="catalog-resizer"
+        role="separator"
+        tabindex="0"
+        aria-label="调整算子列表宽度"
+        aria-orientation="vertical"
+        [attr.aria-valuemin]="320"
+        [attr.aria-valuenow]="listWidth()"
+        (pointerdown)="startListResize($event, catalogLayout)"
+        (keydown)="resizeListWithKeyboard($event, catalogLayout)"
+        (dblclick)="resetListWidth(catalogLayout)"
+      >
+        <span></span>
+      </div>
 
       <section class="detail-card" aria-live="polite">
         @if (selected(); as operator) {
@@ -120,19 +242,63 @@ export function linkedAlgorithmCode(operator: OperatorSummary): string | null {
               ><span>成熟度 {{ version.maturity }}</span>
             </div>
             <nav class="tabs" aria-label="算子详情选项卡">
-              <button type="button" [class.active]="activeTab() === 'overview'" (click)="setTab('overview')">简介</button>
-              <button type="button" [class.active]="activeTab() === 'contract'" (click)="setTab('contract')">契约与参数</button>
-              <button type="button" [class.active]="activeTab() === 'training'" (click)="setTab('training')">训练与模型</button>
-              <button type="button" [class.active]="activeTab() === 'versions'" (click)="setTab('versions')">版本与评估</button>
-              <button type="button" [class.active]="activeTab() === 'documents'" (click)="setTab('documents')">文档</button>
-              <button type="button" [class.active]="activeTab() === 'usage'" (click)="setTab('usage')">使用情况</button>
+              <button
+                type="button"
+                [class.active]="activeTab() === 'overview'"
+                (click)="setTab('overview')"
+              >
+                简介
+              </button>
+              <button
+                type="button"
+                [class.active]="activeTab() === 'contract'"
+                (click)="setTab('contract')"
+              >
+                契约与参数
+              </button>
+              <button
+                type="button"
+                [class.active]="activeTab() === 'training'"
+                (click)="setTab('training')"
+              >
+                训练与模型
+              </button>
+              <button
+                type="button"
+                [class.active]="activeTab() === 'versions'"
+                (click)="setTab('versions')"
+              >
+                版本与评估
+              </button>
+              <button
+                type="button"
+                [class.active]="activeTab() === 'documents'"
+                (click)="setTab('documents')"
+              >
+                文档
+              </button>
+              <button
+                type="button"
+                [class.active]="activeTab() === 'usage'"
+                (click)="setTab('usage')"
+              >
+                使用情况
+              </button>
             </nav>
             @if (activeTab() === 'overview') {
               <div class="tab-body">
                 <p class="description">{{ operator.description }}</p>
                 <h3>适用范围</h3>
-                <p class="muted">{{ algorithmDescription(operator) || '用于已登记数据资产的可追溯分析。运行结果通过工作流统一保存。' }}</p>
-                <div class="algorithm-ref">运行环境：{{ version.runtime_type }} · {{ version.runtime_ready ? '环境就绪' : '环境未就绪' }}</div>
+                <p class="muted">
+                  {{
+                    algorithmDescription(operator) ||
+                      '用于已登记数据资产的可追溯分析。运行结果通过工作流统一保存。'
+                  }}
+                </p>
+                <div class="algorithm-ref">
+                  运行环境：{{ version.runtime_type }} ·
+                  {{ version.runtime_ready ? '环境就绪' : '环境未就绪' }}
+                </div>
               </div>
             }
             @if (activeTab() === 'contract') {
@@ -141,61 +307,108 @@ export function linkedAlgorithmCode(operator: OperatorSummary): string | null {
                   <div>
                     <h3>输入端口</h3>
                     @for (port of version.input_ports; track port['key']) {
-                      <div class="port"><b>{{ port['label'] || port['key'] }}</b><small>{{ port['data_type'] }} · {{ port['unit'] || '无单位' }}</small></div>
-                    } @empty { <p class="muted">无输入端口</p> }
+                      <div class="port">
+                        <b>{{ port['label'] || port['key'] }}</b
+                        ><small>{{ port['data_type'] }} · {{ port['unit'] || '无单位' }}</small>
+                      </div>
+                    } @empty {
+                      <p class="muted">无输入端口</p>
+                    }
                   </div>
                   <div>
                     <h3>输出端口</h3>
                     @for (port of version.output_ports; track port['key']) {
-                      <div class="port"><b>{{ port['label'] || port['key'] }}</b><small>{{ port['data_type'] }} · {{ port['unit'] || '无单位' }}</small></div>
-                    } @empty { <p class="muted">无输出端口</p> }
+                      <div class="port">
+                        <b>{{ port['label'] || port['key'] }}</b
+                        ><small>{{ port['data_type'] }} · {{ port['unit'] || '无单位' }}</small>
+                      </div>
+                    } @empty {
+                      <p class="muted">无输出端口</p>
+                    }
                   </div>
                 </div>
                 <h3>默认推理参数</h3>
                 <pre>{{ version.algorithm?.['default_params'] | json }}</pre>
-                <details><summary>参数契约</summary><pre>{{ version.parameter_schema | json }}</pre></details>
+                <details>
+                  <summary>参数契约</summary>
+                  <pre>{{ version.parameter_schema | json }}</pre>
+                </details>
               </div>
             }
             @if (activeTab() === 'training') {
               <div class="tab-body">
                 @if (version.algorithm; as algorithm) {
-                  <p><b>学习方式：</b>{{ algorithm['learning_paradigm'] || '规则方法' }}　<b>训练要求：</b>{{ algorithm['training_requirement'] || '无需训练' }}</p>
+                  <p>
+                    <b>学习方式：</b>{{ algorithm['learning_paradigm'] || '规则方法' }}　<b
+                      >训练要求：</b
+                    >{{ algorithm['training_requirement'] || '无需训练' }}
+                  </p>
                   <p class="muted">模型策略：{{ algorithm['model_strategy'] || '无状态' }}</p>
                   @if (algorithm['training_requirement'] === 'required') {
                     <div class="training-card">
                       <b>需要按数据集训练</b>
-                      <p class="muted">训练任务通过独立 training_cpu 队列执行，生成的私有模型只能由创建者或管理员使用。</p>
+                      <p class="muted">
+                        训练任务通过独立 training_cpu
+                        队列执行，生成的私有模型只能由创建者或管理员使用。
+                      </p>
                       @if (auth.hasPermission('algorithm:train')) {
                         <app-data-asset-picker
                           [channelRequired]="true"
                           (selectionChange)="setTrainingSelection($event)"
                         />
                         <div class="training-fields">
-                          <label>季节性
+                          <label
+                            >季节性
                             <select [(ngModel)]="trainingSeasonality">
                               <option value="auto">自动判断</option>
                               <option value="daily">日周期</option>
                               <option value="weekly">周周期</option>
                             </select>
                           </label>
-                          <label>最少周期
-                            <input type="number" min="1" max="365" [(ngModel)]="trainingMinimumCycles" />
+                          <label
+                            >最少周期
+                            <input
+                              type="number"
+                              min="1"
+                              max="365"
+                              [(ngModel)]="trainingMinimumCycles"
+                            />
                           </label>
-                          <label>MAD 下限
-                            <input type="number" min="0.000001" step="0.000001" [(ngModel)]="trainingMadFloor" />
+                          <label
+                            >MAD 下限
+                            <input
+                              type="number"
+                              min="0.000001"
+                              step="0.000001"
+                              [(ngModel)]="trainingMadFloor"
+                            />
                           </label>
                         </div>
-                        <button class="primary" type="button" [disabled]="!trainingSelection() || trainingBusy()" (click)="startTraining(operator)">
+                        <button
+                          class="primary"
+                          type="button"
+                          [disabled]="!trainingSelection() || trainingBusy()"
+                          (click)="startTraining(operator)"
+                        >
                           {{ trainingBusy() ? '提交中…' : '开始训练' }}
                         </button>
-                        @if (trainingMessage()) { <p class="muted">{{ trainingMessage() }}</p> }
+                        @if (trainingMessage()) {
+                          <p class="muted">{{ trainingMessage() }}</p>
+                        }
                       }
                       <a class="secondary" routerLink="/tasks">查看训练任务</a>
                     </div>
                   } @else {
-                    <div class="training-card">{{ operator.code === 'chronos2_flow_forecast' ? '预训练零样本，本版本不支持平台内训练。' : '此算子不需要平台训练。' }}</div>
+                    <div class="training-card">
+                      {{
+                        operator.code === 'chronos2_flow_forecast'
+                          ? '预训练零样本，本版本不支持平台内训练。'
+                          : '此算子不需要平台训练。'
+                      }}
+                    </div>
                   }
-                  <h3>训练默认参数</h3><pre>{{ algorithm['training_default_params'] | json }}</pre>
+                  <h3>训练默认参数</h3>
+                  <pre>{{ algorithm['training_default_params'] | json }}</pre>
                 }
               </div>
             }
@@ -203,24 +416,46 @@ export function linkedAlgorithmCode(operator: OperatorSummary): string | null {
               <div class="tab-body">
                 <h3>已登记算子版本</h3>
                 @for (item of operator.versions || []; track item.id) {
-                  <div class="version-row"><b>{{ item.version }}</b><span>{{ item.status }} · {{ item.maturity }}</span><span>{{ item.available ? '可用' : '不可用' }}</span></div>
-                } @empty { <p class="muted">暂无版本记录。</p> }
-                @if (activeRelease(operator); as release) { <div class="algorithm-ref">活动发布版本：{{ release.version }} · {{ release.status }}</div> }
+                  <div class="version-row">
+                    <b>{{ item.version }}</b
+                    ><span>{{ item.status }} · {{ item.maturity }}</span
+                    ><span>{{ item.available ? '可用' : '不可用' }}</span>
+                  </div>
+                } @empty {
+                  <p class="muted">暂无版本记录。</p>
+                }
+                @if (activeRelease(operator); as release) {
+                  <div class="algorithm-ref">
+                    活动发布版本：{{ release.version }} · {{ release.status }}
+                  </div>
+                }
               </div>
             }
             @if (activeTab() === 'documents') {
               <div class="tab-body">
-                @if (documents().length === 0) { <p class="muted">该算子暂未发布文档。</p> }
+                @if (documents().length === 0) {
+                  <p class="muted">该算子暂未发布文档。</p>
+                }
                 @for (doc of documents(); track doc.document_id) {
                   <h3>{{ doc.title }}</h3>
                   @for (docVersion of doc.versions; track docVersion.document_version_id) {
-                    @if (docVersion.markdown) { <article class="markdown" [innerHTML]="renderMarkdown(docVersion.markdown)"></article> }
+                    @if (docVersion.markdown) {
+                      <article
+                        class="markdown"
+                        [innerHTML]="renderMarkdown(docVersion.markdown)"
+                      ></article>
+                    }
                   }
                 }
               </div>
             }
             @if (activeTab() === 'usage') {
-              <div class="tab-body usage-grid"><div><b>工作流引用</b><strong>—</strong></div><div><b>近 7 天运行</b><strong>—</strong></div><div><b>成功率</b><strong>—</strong></div><p class="muted">详细使用统计将在任务聚合接口接入后展示。</p></div>
+              <div class="tab-body usage-grid">
+                <div><b>工作流引用</b><strong>—</strong></div>
+                <div><b>近 7 天运行</b><strong>—</strong></div>
+                <div><b>成功率</b><strong>—</strong></div>
+                <p class="muted">详细使用统计将在任务聚合接口接入后展示。</p>
+              </div>
             }
           }
           @if (operator.can_manage) {
@@ -328,7 +563,7 @@ export function linkedAlgorithmCode(operator: OperatorSummary): string | null {
     }
     .toolbar {
       flex-wrap: wrap;
-      margin-bottom: 18px;
+      margin-bottom: 12px;
     }
     input,
     select {
@@ -365,6 +600,48 @@ export function linkedAlgorithmCode(operator: OperatorSummary): string | null {
       color: #0f67c9;
       border: 1px solid #b6c5d9;
     }
+    .filter-toggle.active {
+      border-color: #0f67c9;
+      background: #eef5ff;
+    }
+    .filter-toggle span {
+      min-width: 20px;
+      height: 20px;
+      border-radius: 999px;
+      display: inline-grid;
+      place-items: center;
+      margin-left: 6px;
+      background: #0f67c9;
+      color: #fff;
+      font-size: 11px;
+    }
+    .text-button {
+      padding-inline: 4px;
+      background: transparent;
+      color: #0f67c9;
+    }
+    .filter-panel {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 12px;
+      padding: 14px;
+      margin-bottom: 18px;
+      border: 1px solid #dce6f2;
+      border-radius: 12px;
+      background: #f8fbff;
+    }
+    .filter-panel label {
+      display: grid;
+      gap: 6px;
+      color: #475467;
+      font-size: 12px;
+      font-weight: 700;
+    }
+    .filter-panel select {
+      width: 100%;
+      min-width: 0;
+      font-weight: 400;
+    }
     button:disabled {
       opacity: 0.5;
       cursor: default;
@@ -379,8 +656,8 @@ export function linkedAlgorithmCode(operator: OperatorSummary): string | null {
     }
     .content-grid {
       display: grid;
-      grid-template-columns: minmax(280px, 0.8fr) minmax(0, 1.6fr);
-      gap: 18px;
+      grid-template-columns: var(--operator-list-width, 380px) 12px minmax(0, 1fr);
+      gap: 0;
       align-items: start;
     }
     .operator-list,
@@ -395,6 +672,29 @@ export function linkedAlgorithmCode(operator: OperatorSummary): string | null {
       padding: 10px;
       max-height: 680px;
       overflow: auto;
+    }
+    .catalog-resizer {
+      align-self: stretch;
+      min-height: 420px;
+      display: grid;
+      place-items: center;
+      cursor: col-resize;
+      touch-action: none;
+      outline: none;
+    }
+    .catalog-resizer span {
+      width: 3px;
+      height: 54px;
+      border-radius: 999px;
+      background: #c8d3e1;
+      transition:
+        height 120ms ease,
+        background 120ms ease;
+    }
+    .catalog-resizer:hover span,
+    .catalog-resizer:focus-visible span {
+      height: 78px;
+      background: #0f67c9;
     }
     .operator-row {
       width: 100%;
@@ -638,6 +938,10 @@ export function linkedAlgorithmCode(operator: OperatorSummary): string | null {
     @media (max-width: 900px) {
       .content-grid {
         grid-template-columns: 1fr;
+        gap: 18px;
+      }
+      .catalog-resizer {
+        display: none;
       }
       .operator-list {
         max-height: 360px;
@@ -665,7 +969,7 @@ export function linkedAlgorithmCode(operator: OperatorSummary): string | null {
     }
   `,
 })
-export class OperatorCenterPage {
+export class OperatorCenterPage implements OnDestroy {
   private readonly api = inject(ApiClient);
   private readonly route = inject(ActivatedRoute);
   private readonly notice = inject(NotificationService);
@@ -673,35 +977,66 @@ export class OperatorCenterPage {
   readonly operatorNames = inject(OperatorNameService);
   readonly auth = inject(AuthService);
   readonly operators = signal<OperatorSummary[]>([]);
+  readonly facets = signal<Record<string, OperatorFacetOption[]>>({});
   readonly templates = signal<WorkflowTemplateSummary[]>([]);
   readonly selected = signal<OperatorSummary | null>(null);
   readonly documents = signal<AlgorithmDocument[]>([]);
-  readonly activeTab = signal<'overview' | 'contract' | 'training' | 'versions' | 'documents' | 'usage'>('overview');
+  readonly activeTab = signal<
+    'overview' | 'contract' | 'training' | 'versions' | 'documents' | 'usage'
+  >('overview');
   readonly message = signal('');
   readonly trainingSelection = signal<DataAssetSelection | null>(null);
   readonly trainingBusy = signal(false);
   readonly trainingMessage = signal('');
+  readonly filtersOpen = signal(false);
+  readonly listWidth = signal(catalogWidthDefault);
   trainingSeasonality = 'auto';
   trainingMinimumCycles = 3;
   trainingMadFloor = 0.000001;
   query = '';
   kind = '';
   maturity = '';
+  status = '';
+  runtimeType = '';
+  businessDomain = '';
+  task = '';
+  learning = '';
+  trainingRequirement = '';
+  modelStrategy = '';
+  private resizeCleanup: (() => void) | null = null;
+  private lastCatalogLayout: HTMLElement | null = null;
 
   constructor() {
     this.kind = this.route.snapshot.queryParamMap.get('kind') || '';
     const tab = this.route.snapshot.queryParamMap.get('tab');
-    if (['overview', 'contract', 'training', 'versions', 'documents', 'usage'].includes(tab || '')) {
-      this.activeTab.set(tab as 'overview' | 'contract' | 'training' | 'versions' | 'documents' | 'usage');
+    if (
+      ['overview', 'contract', 'training', 'versions', 'documents', 'usage'].includes(tab || '')
+    ) {
+      this.activeTab.set(
+        tab as 'overview' | 'contract' | 'training' | 'versions' | 'documents' | 'usage',
+      );
     }
+    this.listWidth.set(this.readStoredListWidth());
+    this.loadFacets();
     this.load();
     this.loadTemplates();
   }
+  ngOnDestroy(): void {
+    this.stopListResize();
+  }
   load(): void {
+    this.message.set('');
     this.api
       .get<{ items: OperatorSummary[] }>('/api/v1/operators', {
         kind: this.kind || undefined,
+        status: this.status || undefined,
         maturity: this.maturity || undefined,
+        runtime_type: this.runtimeType || undefined,
+        business_domain: this.businessDomain || undefined,
+        task: this.task || undefined,
+        learning: this.learning || undefined,
+        training_requirement: this.trainingRequirement || undefined,
+        model_strategy: this.modelStrategy || undefined,
         query: this.query || undefined,
         page: 1,
         page_size: 100,
@@ -722,6 +1057,40 @@ export class OperatorCenterPage {
         error: () => this.message.set('算子目录加载失败，请检查权限或服务状态。'),
       });
   }
+  loadFacets(): void {
+    this.api.get<OperatorFacetResponse>('/api/v1/operator-facets').subscribe({
+      next: (result) => this.facets.set(result.facets || {}),
+      error: () => this.facets.set({}),
+    });
+  }
+  facetOptions(dimension: string): OperatorFacetOption[] {
+    return this.facets()[dimension] || [];
+  }
+  activeFilterCount(): number {
+    return countActiveOperatorFilters({
+      kind: this.kind,
+      maturity: this.maturity,
+      status: this.status,
+      runtimeType: this.runtimeType,
+      businessDomain: this.businessDomain,
+      task: this.task,
+      learning: this.learning,
+      trainingRequirement: this.trainingRequirement,
+      modelStrategy: this.modelStrategy,
+    });
+  }
+  resetFilters(): void {
+    this.kind = '';
+    this.maturity = '';
+    this.status = '';
+    this.runtimeType = '';
+    this.businessDomain = '';
+    this.task = '';
+    this.learning = '';
+    this.trainingRequirement = '';
+    this.modelStrategy = '';
+    this.load();
+  }
   loadTemplates(): void {
     this.api
       .get<WorkflowTemplateSummary[]>('/api/v1/workflow-templates')
@@ -733,14 +1102,12 @@ export class OperatorCenterPage {
     this.trainingSelection.set(null);
     this.trainingMessage.set('');
     if (this.activeTab() === 'documents') this.loadDocuments(operator);
-    this.api
-      .get<OperatorSummary>(`/api/v1/operators/${operator.code}`)
-      .subscribe({
-        next: (detail) => {
-          this.selected.set(detail);
-          if (this.activeTab() === 'documents') this.loadDocuments(detail);
-        },
-      });
+    this.api.get<OperatorSummary>(`/api/v1/operators/${operator.code}`).subscribe({
+      next: (detail) => {
+        this.selected.set(detail);
+        if (this.activeTab() === 'documents') this.loadDocuments(detail);
+      },
+    });
   }
   setTrainingSelection(selection: DataAssetSelection | null): void {
     this.trainingSelection.set(selection);
@@ -756,22 +1123,27 @@ export class OperatorCenterPage {
     this.trainingBusy.set(true);
     this.trainingMessage.set('正在创建训练任务…');
     this.api
-      .post<Record<string, unknown>, Record<string, unknown>>(`/api/v1/algorithms/${algorithmCode}/training-runs`, {
-        dataset_version_id: selection.version.id,
-        monitor_point_id: selection.channel?.monitor_point_id ?? null,
-        metric_code: selection.channel?.metric_code || 'flow',
-        value_source: selection.value_source,
-        training_params: {
-          seasonality: this.trainingSeasonality,
-          minimum_cycles: Number(this.trainingMinimumCycles),
-          mad_floor: Number(this.trainingMadFloor),
+      .post<Record<string, unknown>, Record<string, unknown>>(
+        `/api/v1/algorithms/${algorithmCode}/training-runs`,
+        {
+          dataset_version_id: selection.version.id,
+          monitor_point_id: selection.channel?.monitor_point_id ?? null,
+          metric_code: selection.channel?.metric_code || 'flow',
+          value_source: selection.value_source,
+          training_params: {
+            seasonality: this.trainingSeasonality,
+            minimum_cycles: Number(this.trainingMinimumCycles),
+            mad_floor: Number(this.trainingMadFloor),
+          },
+          random_seed: 42,
         },
-        random_seed: 42,
-      })
+      )
       .subscribe({
         next: (run) => {
           this.trainingBusy.set(false);
-          this.trainingMessage.set(`训练任务已提交：${String(run['training_run_id'] || run['task_id'] || '已受理')}`);
+          this.trainingMessage.set(
+            `训练任务已提交：${String(run['training_run_id'] || run['task_id'] || '已受理')}`,
+          );
         },
         error: () => {
           this.trainingBusy.set(false);
@@ -786,12 +1158,17 @@ export class OperatorCenterPage {
   algorithmTags(operator: OperatorSummary): Array<{ code: string; name: string }> {
     const tags = operator.active_version?.algorithm?.['tags'];
     return Array.isArray(tags)
-      ? tags.map((tag) => ({ code: String((tag as Record<string, unknown>)['code'] || ''), name: String((tag as Record<string, unknown>)['name'] || '') }))
+      ? tags.map((tag) => ({
+          code: String((tag as Record<string, unknown>)['code'] || ''),
+          name: String((tag as Record<string, unknown>)['name'] || ''),
+        }))
       : [];
   }
   algorithmDescription(operator: OperatorSummary): string {
     const manifest = operator.active_version?.algorithm?.['capability_manifest'];
-    return manifest && typeof manifest === 'object' ? String((manifest as Record<string, unknown>)['description'] || '') : '';
+    return manifest && typeof manifest === 'object'
+      ? String((manifest as Record<string, unknown>)['description'] || '')
+      : '';
   }
   activeRelease(operator: OperatorSummary): { version: string; status: string } | null {
     const release = operator.active_version?.algorithm?.['active_release'];
@@ -812,6 +1189,80 @@ export class OperatorCenterPage {
       next: (documents) => this.documents.set(documents || []),
       error: () => this.documents.set([]),
     });
+  }
+  startListResize(event: PointerEvent, layout: HTMLElement): void {
+    if (window.innerWidth <= 900) return;
+    event.preventDefault();
+    this.stopListResize();
+    this.lastCatalogLayout = layout;
+    const startX = event.clientX;
+    const startWidth = this.listWidth();
+    const previousUserSelect = document.body.style.userSelect;
+    document.body.style.userSelect = 'none';
+    const move = (next: PointerEvent) => {
+      this.listWidth.set(this.clampListWidth(startWidth + next.clientX - startX, layout));
+    };
+    const stop = () => {
+      document.body.style.userSelect = previousUserSelect;
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', stop);
+      window.removeEventListener('pointercancel', stop);
+      this.resizeCleanup = null;
+      this.storeListWidth();
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', stop, { once: true });
+    window.addEventListener('pointercancel', stop, { once: true });
+    this.resizeCleanup = stop;
+  }
+  resizeListWithKeyboard(event: KeyboardEvent, layout: HTMLElement): void {
+    const step = event.shiftKey ? 40 : 16;
+    let next = this.listWidth();
+    if (event.key === 'ArrowLeft') next -= step;
+    else if (event.key === 'ArrowRight') next += step;
+    else if (event.key === 'Home') next = catalogWidthMin;
+    else if (event.key === 'End') next = layout.clientWidth * catalogWidthRatioMax;
+    else return;
+    event.preventDefault();
+    this.lastCatalogLayout = layout;
+    this.listWidth.set(this.clampListWidth(next, layout));
+    this.storeListWidth();
+  }
+  resetListWidth(layout: HTMLElement): void {
+    this.lastCatalogLayout = layout;
+    this.listWidth.set(this.clampListWidth(catalogWidthDefault, layout));
+    this.storeListWidth();
+  }
+  @HostListener('window:resize')
+  onViewportResize(): void {
+    if (window.innerWidth <= 900) return;
+    this.listWidth.set(this.clampListWidth(this.listWidth(), this.lastCatalogLayout));
+  }
+  private clampListWidth(value: number, layout?: HTMLElement | null): number {
+    const availableWidth = layout?.clientWidth || window.innerWidth;
+    return clampOperatorCatalogWidth(value, availableWidth);
+  }
+  private stopListResize(): void {
+    this.resizeCleanup?.();
+    this.resizeCleanup = null;
+  }
+  private listWidthStorageKey(): string {
+    return `smart-water.operator-catalog.width.v1:${this.auth.user()?.id ?? 'anonymous'}`;
+  }
+  private readStoredListWidth(): number {
+    try {
+      const value = Number(window.localStorage.getItem(this.listWidthStorageKey()));
+      return Number.isFinite(value) && value > 0 ? this.clampListWidth(value) : catalogWidthDefault;
+    } catch {
+      return catalogWidthDefault;
+    }
+  }
+  private storeListWidth(): void {
+    try {
+      window.localStorage.setItem(this.listWidthStorageKey(), String(this.listWidth()));
+    } catch {
+      // Local UI preferences are optional.
+    }
   }
   renderMarkdown(markdown: string): SafeHtml {
     const html = marked.parse(markdown, { async: false }) as string;

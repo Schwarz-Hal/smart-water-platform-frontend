@@ -1,7 +1,11 @@
 import { describe, expect, it } from 'vitest';
 
 import { OperatorSummary } from '../../core/models/api.models';
-import { linkedAlgorithmCode } from './operator-center.page';
+import {
+  clampOperatorCatalogWidth,
+  countActiveOperatorFilters,
+  linkedAlgorithmCode,
+} from './operator-center.page';
 
 function operator(algorithm: Record<string, unknown> | null): OperatorSummary {
   return {
@@ -44,5 +48,24 @@ describe('operator lifecycle links', () => {
   it('does not construct algorithm requests for non-algorithm nodes', () => {
     expect(linkedAlgorithmCode(operator(null))).toBeNull();
     expect(linkedAlgorithmCode(operator({ reason: 'Algorithm version not found' }))).toBeNull();
+  });
+});
+
+describe('operator catalogue controls', () => {
+  it('clamps the resizable list between 320px and 45 percent of the workspace', () => {
+    expect(clampOperatorCatalogWidth(120, 1200)).toBe(320);
+    expect(clampOperatorCatalogWidth(900, 1200)).toBe(540);
+    expect(clampOperatorCatalogWidth(412.4, 1200)).toBe(412);
+  });
+
+  it('counts only selected filters', () => {
+    expect(
+      countActiveOperatorFilters({
+        kind: 'algorithm',
+        maturity: '',
+        task: 'forecasting',
+        learning: '',
+      }),
+    ).toBe(2);
   });
 });
