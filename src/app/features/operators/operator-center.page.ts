@@ -18,6 +18,11 @@ import { AuthService } from '../../core/services/auth.service';
 import { DataAssetPickerComponent } from '../../shared/components/data-asset-picker.component';
 import { DataAssetSelection } from '../../core/models/api.models';
 
+export function linkedAlgorithmCode(operator: OperatorSummary): string | null {
+  const value = operator.active_version?.algorithm?.['code'];
+  return typeof value === 'string' && value.trim() ? value : null;
+}
+
 @Component({
   selector: 'app-operator-center-page',
   imports: [CommonModule, FormsModule, RouterLink, DataAssetPickerComponent],
@@ -180,7 +185,7 @@ import { DataAssetSelection } from '../../core/models/api.models';
                             <input type="number" min="0.000001" step="0.000001" [(ngModel)]="trainingMadFloor" />
                           </label>
                         </div>
-                        <button class="primary" type="button" [disabled]="!trainingSelection() || trainingBusy()" (click)="startTraining(operator.code)">
+                        <button class="primary" type="button" [disabled]="!trainingSelection() || trainingBusy()" (click)="startTraining(operator)">
                           {{ trainingBusy() ? '提交中…' : '开始训练' }}
                         </button>
                         @if (trainingMessage()) { <p class="muted">{{ trainingMessage() }}</p> }
@@ -710,7 +715,9 @@ export class OperatorCenterPage {
               this.operators()[0] ||
               null,
           );
-          if (this.selected()) this.loadDocuments(this.selected()!.code);
+          if (this.selected() && this.activeTab() === 'documents') {
+            this.loadDocuments(this.selected()!);
+          }
         },
         error: () => this.message.set('算子目录加载失败，请检查权限或服务状态。'),
       });
@@ -725,17 +732,27 @@ export class OperatorCenterPage {
     this.documents.set([]);
     this.trainingSelection.set(null);
     this.trainingMessage.set('');
-    this.loadDocuments(operator.code);
+    if (this.activeTab() === 'documents') this.loadDocuments(operator);
     this.api
       .get<OperatorSummary>(`/api/v1/operators/${operator.code}`)
-      .subscribe({ next: (detail) => { this.selected.set(detail); this.loadDocuments(detail.code); } });
+      .subscribe({
+        next: (detail) => {
+          this.selected.set(detail);
+          if (this.activeTab() === 'documents') this.loadDocuments(detail);
+        },
+      });
   }
   setTrainingSelection(selection: DataAssetSelection | null): void {
     this.trainingSelection.set(selection);
   }
-  startTraining(algorithmCode: string): void {
+  startTraining(operator: OperatorSummary): void {
     const selection = this.trainingSelection();
     if (!selection || this.trainingBusy()) return;
+    const algorithmCode = this.algorithmCode(operator);
+    if (!algorithmCode) {
+      this.trainingMessage.set('该算子没有关联可训练的算法资产。');
+      return;
+    }
     this.trainingBusy.set(true);
     this.trainingMessage.set('正在创建训练任务…');
     this.api
@@ -764,7 +781,7 @@ export class OperatorCenterPage {
   }
   setTab(tab: 'overview' | 'contract' | 'training' | 'versions' | 'documents' | 'usage'): void {
     this.activeTab.set(tab);
-    if (tab === 'documents' && this.selected()) this.loadDocuments(this.selected()!.code);
+    if (tab === 'documents' && this.selected()) this.loadDocuments(this.selected()!);
   }
   algorithmTags(operator: OperatorSummary): Array<{ code: string; name: string }> {
     const tags = operator.active_version?.algorithm?.['tags'];
@@ -782,7 +799,15 @@ export class OperatorCenterPage {
     const value = release as Record<string, unknown>;
     return { version: String(value['version'] || ''), status: String(value['status'] || '') };
   }
-  loadDocuments(code: string): void {
+  algorithmCode(operator: OperatorSummary): string | null {
+    return linkedAlgorithmCode(operator);
+  }
+  loadDocuments(operator: OperatorSummary): void {
+    const code = this.algorithmCode(operator);
+    if (!code || !this.auth.hasPermission('algorithm:read')) {
+      this.documents.set([]);
+      return;
+    }
     this.api.get<AlgorithmDocument[]>(`/api/v1/algorithms/${code}/documents`).subscribe({
       next: (documents) => this.documents.set(documents || []),
       error: () => this.documents.set([]),
