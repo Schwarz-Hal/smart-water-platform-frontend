@@ -16,18 +16,30 @@
 → 表格、图表和报告
 ```
 
-主要技术：Angular 21、TypeScript、Angular Material、Signals、ECharts、Rete、Dockview、Formly、AG Grid Community。环境与启动方法见 [README](README.md)，请求和响应以后端 [API 文档](https://github.com/Schwarz-Hal/smart-water-platform-backend/blob/main/docs/API_CONTRACT_V1.md) 与 `/openapi.json` 为准。
+主要技术：Angular 21、TypeScript、Angular Material、Signals、ECharts 6、Rete.js 2、Dockview、NGX Formly、AG Grid Community、Vitest。环境与启动方法见 [README](README.md)，请求和响应以后端 [API 文档](https://github.com/Schwarz-Hal/smart-water-platform-backend/blob/main/docs/API_CONTRACT_V1.md) 与 `/openapi.json` 为准。
 
 ### 目录职责
 
 | 目录                | 用途                                         | 修改时注意                   |
 | ------------------- | -------------------------------------------- | ---------------------------- |
-| `src/app/core/`     | 认证、HTTP、拦截器、错误处理、任务跟踪、DTO  | 不放具体页面展示逻辑         |
-| `src/app/features/` | 数据资产、算子、工作流、任务、用户等业务页面 | 每个 feature 保持独立边界    |
-| `src/app/shared/`   | 通用组件、图表、选择器和展示模型             | 不直接解析某个接口的原始响应 |
+| `src/app/core/`     | 认证、HTTP、拦截器、错误处理、任务跟踪、DTO、S01 场景服务、工作流草稿缓存 | 不放具体页面展示逻辑         |
+| `src/app/features/` | 登录、首页、场景中心、数据资产、算子、工作流、任务、结果、用户、回收站等业务页面 | 每个 feature 保持独立边界    |
+| `src/app/shared/`   | 通用组件、图表、选择器、血缘树、参数表单和展示模型 | 不直接解析某个接口的原始响应 |
 | `src/app/layout/`   | 登录后的导航和页面外壳                       | 权限菜单、响应式布局         |
 | `.storybook/`       | 通用组件的隔离展示                           | 只使用模拟数据，不连接服务器 |
 | `src/**/*.spec.ts`  | Angular/Vitest 单元测试                      | 覆盖状态、权限和错误分支     |
+
+### 核心服务清单（`core/services/`）
+
+| 服务 | 职责 |
+|------|------|
+| `api-client.service.ts` | 统一 API 客户端，自动解包 `ApiEnvelope.data`，序列化查询参数 |
+| `auth.service.ts` | 认证服务，sessionStorage 存储双 Token，登录/刷新/注销/账户注销 |
+| `notification.service.ts` | 基于 MatSnackBar 的全局通知，自动携带 trace_id，解析工作流结构化错误 |
+| `task-tracker.service.ts` | 任务追踪服务，WebSocket 优先，断开降级 2s 轮询，多任务并行管理 |
+| `workflow-cache.service.ts` | 工作流草稿 IndexedDB 本地缓存，刷新页面可恢复未保存编辑 |
+| `operator-name.service.ts` | 算子编码与显示名称映射，稳定编码不变，仅影响展示 |
+| `s01-workflow.service.ts` | S01 漏损黑盒场景服务，封装模板解析→草稿创建→数据绑定→发布→运行全链路 |
 
 ### 不可突破的边界
 
@@ -97,7 +109,7 @@ git switch -c feature/<模块>-<事项>
 - 优先复用 Angular Material 和 `shared/` 组件，不复制相似控件。
 - 页面必须根据后端返回的权限控制入口，同时正确处理后端 403。
 - 重要操作提供明确成功/失败反馈，并展示可复制的 `trace_id`。
-- 时间统一通过平台北京时间格式化逻辑显示，不直接依赖浏览器时区。
+- 时间统一通过 `beijing-time.pipe` 北京时间格式化逻辑显示，不直接依赖浏览器时区。
 - 在 1440px、1024px 和手机宽度检查文字、按钮、表格、抽屉和图表。
 - 新增通用组件时补充 Storybook；业务页面不需要为了展示而连接真实服务。
 
@@ -106,8 +118,34 @@ git switch -c feature/<模块>-<事项>
 - Graph 中只保存节点编码、版本、参数、连线、位置和输出声明。
 - 数据资产运行绑定按节点实例隔离，不能在不同 Dataset Channel 间共享表单状态。
 - Rete、Dockview 与表单状态统一由编辑器 Store 协调，组件切换不得丢失草稿。
+- 连线时校验端口 `data_type`，类型不匹配阻止连接。
 - 前端校验用于即时提示，保存、发布和运行仍以后端校验为准。
 - 修改图序列化时必须验证旧草稿、已发布图和历史运行仍可打开。
+- 草稿同时写入服务端和 IndexedDB，多标签页编辑以 `expected_revision` 做乐观锁。
+
+### S01 黑盒场景
+
+- S01 漏损评估不暴露工作流编排细节，通过 `S01WorkflowService` 一键完成模板解析→草稿创建→四路数据绑定→发布→运行。
+- 四路必填角色：`inlet_flow`、`authorized_consumption`、`legitimate_night_use`、`pressure`，不可复用同一数据通道。
+- 压力通道单位必须为米（m），前端做前置校验。
+- 运行结果通过 `/s01/runs/:runId` 查看，内部复用工作流运行接口。
+
+### 权限点参考
+
+| 权限码 | 控制范围 |
+|--------|---------|
+| `data_source:read` / `data_source:write` | 数据源查看 / 创建、测试、导入 |
+| `dataset:read` | 数据资产详情查看 |
+| `operator:read` | 算子目录查看 |
+| `algorithm:publish` | 外部算法包导入页面 |
+| `algorithm:approve` | 算法包审核批准/退回 |
+| `algorithm:run` | 提交可执行算法（已统一走工作流） |
+| `workflow:read` | 工作流库、运行记录、场景中心查看 |
+| `workflow:edit` | 工作流创建、编辑、S01 场景运行 |
+| `task:read` / `task:cancel` | 任务查看 / 取消 |
+| `result:read` | 算法结果查看 |
+| `user:manage` | 用户管理页面 |
+| `recycle:manage` | 资源回收站页面 |
 
 ### 测试要求
 
@@ -184,7 +222,7 @@ GitHub Actions 会：
 
 1. 使用 Ubuntu 和 Node.js 24；
 2. 使用 npm 缓存并执行 `npm ci`；
-3. 执行 `npm test`；
+3. 执行 `npm test`（Vitest）；
 4. 执行生产构建 `npm run build`；
 5. 执行 Storybook 静态构建 `npm run build-storybook`。
 
