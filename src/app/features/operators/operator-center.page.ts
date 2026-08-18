@@ -14,10 +14,13 @@ import {
 import { ApiClient } from '../../core/services/api-client.service';
 import { NotificationService } from '../../core/services/notification.service';
 import { OperatorNameService } from '../../core/services/operator-name.service';
+import { AuthService } from '../../core/services/auth.service';
+import { DataAssetPickerComponent } from '../../shared/components/data-asset-picker.component';
+import { DataAssetSelection } from '../../core/models/api.models';
 
 @Component({
   selector: 'app-operator-center-page',
-  imports: [CommonModule, FormsModule, RouterLink],
+  imports: [CommonModule, FormsModule, RouterLink, DataAssetPickerComponent],
   template: `
     <header class="page-header">
       <div>
@@ -154,7 +157,36 @@ import { OperatorNameService } from '../../core/services/operator-name.service';
                   <p><b>学习方式：</b>{{ algorithm['learning_paradigm'] || '规则方法' }}　<b>训练要求：</b>{{ algorithm['training_requirement'] || '无需训练' }}</p>
                   <p class="muted">模型策略：{{ algorithm['model_strategy'] || '无状态' }}</p>
                   @if (algorithm['training_requirement'] === 'required') {
-                    <div class="training-card"><b>需要按数据集训练</b><p class="muted">训练任务通过独立 training_cpu 队列执行，生成的私有模型只能由创建者或管理员使用。</p><a class="secondary" routerLink="/tasks">查看训练任务</a></div>
+                    <div class="training-card">
+                      <b>需要按数据集训练</b>
+                      <p class="muted">训练任务通过独立 training_cpu 队列执行，生成的私有模型只能由创建者或管理员使用。</p>
+                      @if (auth.hasPermission('algorithm:train')) {
+                        <app-data-asset-picker
+                          [channelRequired]="true"
+                          (selectionChange)="setTrainingSelection($event)"
+                        />
+                        <div class="training-fields">
+                          <label>季节性
+                            <select [(ngModel)]="trainingSeasonality">
+                              <option value="auto">自动判断</option>
+                              <option value="daily">日周期</option>
+                              <option value="weekly">周周期</option>
+                            </select>
+                          </label>
+                          <label>最少周期
+                            <input type="number" min="1" max="365" [(ngModel)]="trainingMinimumCycles" />
+                          </label>
+                          <label>MAD 下限
+                            <input type="number" min="0.000001" step="0.000001" [(ngModel)]="trainingMadFloor" />
+                          </label>
+                        </div>
+                        <button class="primary" type="button" [disabled]="!trainingSelection() || trainingBusy()" (click)="startTraining(operator.code)">
+                          {{ trainingBusy() ? '提交中…' : '开始训练' }}
+                        </button>
+                        @if (trainingMessage()) { <p class="muted">{{ trainingMessage() }}</p> }
+                      }
+                      <a class="secondary" routerLink="/tasks">查看训练任务</a>
+                    </div>
                   } @else {
                     <div class="training-card">{{ operator.code === 'chronos2_flow_forecast' ? '预训练零样本，本版本不支持平台内训练。' : '此算子不需要平台训练。' }}</div>
                   }
@@ -500,6 +532,27 @@ import { OperatorNameService } from '../../core/services/operator-name.service';
       display: grid;
       gap: 8px;
     }
+    .training-card app-data-asset-picker {
+      width: 100%;
+    }
+    .training-fields {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 10px;
+    }
+    .training-fields label {
+      display: grid;
+      gap: 5px;
+      color: #475467;
+      font-size: 12px;
+    }
+    .training-fields input,
+    .training-fields select {
+      width: 100%;
+      min-width: 0;
+      min-height: 36px;
+      box-sizing: border-box;
+    }
     .version-row {
       display: grid;
       grid-template-columns: 1fr 1fr auto;
@@ -600,7 +653,8 @@ import { OperatorNameService } from '../../core/services/operator-name.service';
         min-width: 100%;
       }
       .usage-grid,
-      .version-row {
+      .version-row,
+      .training-fields {
         grid-template-columns: 1fr;
       }
     }
@@ -612,12 +666,19 @@ export class OperatorCenterPage {
   private readonly notice = inject(NotificationService);
   private readonly sanitizer = inject(DomSanitizer);
   readonly operatorNames = inject(OperatorNameService);
+  readonly auth = inject(AuthService);
   readonly operators = signal<OperatorSummary[]>([]);
   readonly templates = signal<WorkflowTemplateSummary[]>([]);
   readonly selected = signal<OperatorSummary | null>(null);
   readonly documents = signal<AlgorithmDocument[]>([]);
   readonly activeTab = signal<'overview' | 'contract' | 'training' | 'versions' | 'documents' | 'usage'>('overview');
   readonly message = signal('');
+  readonly trainingSelection = signal<DataAssetSelection | null>(null);
+  readonly trainingBusy = signal(false);
+  readonly trainingMessage = signal('');
+  trainingSeasonality = 'auto';
+  trainingMinimumCycles = 3;
+  trainingMadFloor = 0.000001;
   query = '';
   kind = '';
   maturity = '';
@@ -662,10 +723,44 @@ export class OperatorCenterPage {
   select(operator: OperatorSummary): void {
     this.selected.set(operator);
     this.documents.set([]);
+    this.trainingSelection.set(null);
+    this.trainingMessage.set('');
     this.loadDocuments(operator.code);
     this.api
       .get<OperatorSummary>(`/api/v1/operators/${operator.code}`)
       .subscribe({ next: (detail) => { this.selected.set(detail); this.loadDocuments(detail.code); } });
+  }
+  setTrainingSelection(selection: DataAssetSelection | null): void {
+    this.trainingSelection.set(selection);
+  }
+  startTraining(algorithmCode: string): void {
+    const selection = this.trainingSelection();
+    if (!selection || this.trainingBusy()) return;
+    this.trainingBusy.set(true);
+    this.trainingMessage.set('正在创建训练任务…');
+    this.api
+      .post<Record<string, unknown>, Record<string, unknown>>(`/api/v1/algorithms/${algorithmCode}/training-runs`, {
+        dataset_version_id: selection.version.id,
+        monitor_point_id: selection.channel?.monitor_point_id ?? null,
+        metric_code: selection.channel?.metric_code || 'flow',
+        value_source: selection.value_source,
+        training_params: {
+          seasonality: this.trainingSeasonality,
+          minimum_cycles: Number(this.trainingMinimumCycles),
+          mad_floor: Number(this.trainingMadFloor),
+        },
+        random_seed: 42,
+      })
+      .subscribe({
+        next: (run) => {
+          this.trainingBusy.set(false);
+          this.trainingMessage.set(`训练任务已提交：${String(run['training_run_id'] || run['task_id'] || '已受理')}`);
+        },
+        error: () => {
+          this.trainingBusy.set(false);
+          this.trainingMessage.set('训练任务提交失败，请检查数据版本、权限和服务状态。');
+        },
+      });
   }
   setTab(tab: 'overview' | 'contract' | 'training' | 'versions' | 'documents' | 'usage'): void {
     this.activeTab.set(tab);
