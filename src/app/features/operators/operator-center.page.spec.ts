@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'vitest';
 
-import { OperatorSummary } from '../../core/models/api.models';
+import { AlgorithmDocument, OperatorSummary } from '../../core/models/api.models';
 import {
   clampOperatorCatalogWidth,
   countActiveOperatorFilters,
+  currentAlgorithmDocumentVersion,
   linkedAlgorithmCode,
 } from './operator-center.page';
 
@@ -48,6 +49,40 @@ describe('operator lifecycle links', () => {
   it('does not construct algorithm requests for non-algorithm nodes', () => {
     expect(linkedAlgorithmCode(operator(null))).toBeNull();
     expect(linkedAlgorithmCode(operator({ reason: 'Algorithm version not found' }))).toBeNull();
+  });
+});
+
+describe('operator documents', () => {
+  it('renders only the explicitly selected current document version', () => {
+    const document: AlgorithmDocument = {
+      document_id: 'doc-1',
+      title: 'Chronos-2 算法说明',
+      doc_kind: 'reference',
+      status: 'published',
+      current_version_id: 'version-2',
+      versions: [
+        {
+          document_version_id: 'version-1',
+          version: '1.0.0',
+          locale: 'zh-CN',
+          source_type: 'markdown',
+          status: 'published',
+          markdown: '旧文档',
+          created_at: '2026-08-01T00:00:00+08:00',
+        },
+        {
+          document_version_id: 'version-2',
+          version: '1.1.0',
+          locale: 'zh-CN',
+          source_type: 'markdown',
+          status: 'published',
+          markdown: '新文档',
+          created_at: '2026-08-18T00:00:00+08:00',
+        },
+      ],
+    };
+
+    expect(currentAlgorithmDocumentVersion(document)?.markdown).toBe('新文档');
   });
 });
 

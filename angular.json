@@ -30,7 +30,11 @@
                 "input": "public"
               }
             ],
-            "styles": ["node_modules/dockview-angular/dist/styles/dockview.css", "src/styles.scss"]
+            "styles": [
+              "node_modules/dockview-angular/dist/styles/dockview.css",
+              "node_modules/katex/dist/katex.min.css",
+              "src/styles.scss"
+            ]
           },
           "configurations": {
             "production": {

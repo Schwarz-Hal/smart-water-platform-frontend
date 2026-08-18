@@ -1,17 +1,17 @@
 import { CommonModule } from '@angular/common';
 import { Component, HostListener, OnDestroy, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
+import { SafeHtml } from '@angular/platform-browser';
 import { ActivatedRoute, RouterLink } from '@angular/router';
-import { marked } from 'marked';
-import DOMPurify from 'dompurify';
 
 import {
   AlgorithmDocument,
+  AlgorithmDocumentVersion,
   OperatorSummary,
   WorkflowTemplateSummary,
 } from '../../core/models/api.models';
 import { ApiClient } from '../../core/services/api-client.service';
+import { AlgorithmDocumentRendererService } from '../../core/services/algorithm-document-renderer.service';
 import { NotificationService } from '../../core/services/notification.service';
 import { OperatorNameService } from '../../core/services/operator-name.service';
 import { AuthService } from '../../core/services/auth.service';
@@ -21,6 +21,18 @@ import { DataAssetSelection } from '../../core/models/api.models';
 export function linkedAlgorithmCode(operator: OperatorSummary): string | null {
   const value = operator.active_version?.algorithm?.['code'];
   return typeof value === 'string' && value.trim() ? value : null;
+}
+
+export function currentAlgorithmDocumentVersion(
+  document: AlgorithmDocument,
+): AlgorithmDocumentVersion | null {
+  if (document.current_version_id) {
+    const current = document.versions.find(
+      (version) => version.document_version_id === document.current_version_id,
+    );
+    if (current) return current;
+  }
+  return document.versions.find((version) => version.status === 'published') ?? null;
 }
 
 interface OperatorFacetOption {
@@ -438,12 +450,15 @@ export function countActiveOperatorFilters(filters: Record<string, string>): num
                 }
                 @for (doc of documents(); track doc.document_id) {
                   <h3>{{ doc.title }}</h3>
-                  @for (docVersion of doc.versions; track docVersion.document_version_id) {
+                  @if (currentDocumentVersion(doc); as docVersion) {
+                    <p class="document-version">文档版本 {{ docVersion.version }}</p>
                     @if (docVersion.markdown) {
                       <article
                         class="markdown"
                         [innerHTML]="renderMarkdown(docVersion.markdown)"
                       ></article>
+                    } @else {
+                      <p class="muted">该文档版本暂无可展示的 Markdown 内容。</p>
                     }
                   }
                 }
@@ -887,8 +902,35 @@ export function countActiveOperatorFilters(filters: Record<string, string>): num
     .markdown {
       line-height: 1.7;
       color: #344054;
+      max-width: 1040px;
     }
-    .markdown pre {
+    .document-version {
+      color: #667085;
+      font-size: 12px;
+      margin: -4px 0 18px;
+    }
+    :host ::ng-deep .markdown h1,
+    :host ::ng-deep .markdown h2,
+    :host ::ng-deep .markdown h3 {
+      color: #172033;
+      line-height: 1.3;
+      margin: 1.35em 0 0.55em;
+    }
+    :host ::ng-deep .markdown img {
+      display: block;
+      width: min(100%, 1120px);
+      height: auto;
+      margin: 18px auto 10px;
+      border: 1px solid #e4e7ec;
+      border-radius: 12px;
+      background: #f8fafc;
+    }
+    :host ::ng-deep .markdown .katex-display {
+      overflow-x: auto;
+      overflow-y: hidden;
+      padding: 8px 0;
+    }
+    :host ::ng-deep .markdown pre {
       overflow: auto;
     }
     .manage-actions {
@@ -973,7 +1015,7 @@ export class OperatorCenterPage implements OnDestroy {
   private readonly api = inject(ApiClient);
   private readonly route = inject(ActivatedRoute);
   private readonly notice = inject(NotificationService);
-  private readonly sanitizer = inject(DomSanitizer);
+  private readonly documentRenderer = inject(AlgorithmDocumentRendererService);
   readonly operatorNames = inject(OperatorNameService);
   readonly auth = inject(AuthService);
   readonly operators = signal<OperatorSummary[]>([]);
@@ -1265,8 +1307,10 @@ export class OperatorCenterPage implements OnDestroy {
     }
   }
   renderMarkdown(markdown: string): SafeHtml {
-    const html = marked.parse(markdown, { async: false }) as string;
-    return this.sanitizer.bypassSecurityTrustHtml(DOMPurify.sanitize(html));
+    return this.documentRenderer.render(markdown);
+  }
+  currentDocumentVersion(document: AlgorithmDocument): AlgorithmDocumentVersion | null {
+    return currentAlgorithmDocumentVersion(document);
   }
   toggle(operator: OperatorSummary): void {
     const nextStatus = operator.status === 'active' ? 'disabled' : 'active';
