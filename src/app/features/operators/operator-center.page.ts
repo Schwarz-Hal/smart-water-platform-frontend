@@ -1706,7 +1706,10 @@ export class OperatorCenterPage implements OnDestroy {
     }
   }
   algorithmTags(operator: OperatorSummary): Array<{ code: string; name: string }> {
-    const tags = operator.active_version?.algorithm?.['tags'];
+    const tags =
+      operator.active_version?.algorithm?.['tags'] ||
+      operator.active_version?.tags ||
+      operator.tags;
     return Array.isArray(tags)
       ? tags.map((tag) => ({
           code: String((tag as Record<string, unknown>)['code'] || ''),
