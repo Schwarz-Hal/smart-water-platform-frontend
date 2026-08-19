@@ -7,6 +7,7 @@ import { ActivatedRoute, RouterLink } from '@angular/router';
 import {
   AlgorithmDocument,
   AlgorithmDocumentVersion,
+  ModelVersionSummary,
   OperatorSummary,
   WorkflowTemplateSummary,
 } from '../../core/models/api.models';
@@ -350,18 +351,24 @@ export function countActiveOperatorFilters(filters: Record<string, string>): num
             @if (activeTab() === 'training') {
               <div class="tab-body">
                 @if (version.algorithm; as algorithm) {
-                  <p>
-                    <b>学习方式：</b>{{ algorithm['learning_paradigm'] || '规则方法' }}　<b
-                      >训练要求：</b
-                    >{{ algorithm['training_requirement'] || '无需训练' }}
-                  </p>
-                  <p class="muted">模型策略：{{ algorithm['model_strategy'] || '无状态' }}</p>
+                  <div class="training-header-info">
+                    <p>
+                      <b>学习方式：</b>{{ algorithm['learning_paradigm'] || '规则方法' }}　<b
+                        >训练要求：</b
+                      >{{ algorithm['training_requirement'] || '无需训练' }}
+                    </p>
+                    <p class="muted">模型策略：{{ algorithm['model_strategy'] || '无状态' }}</p>
+                  </div>
+
                   @if (algorithm['training_requirement'] === 'required') {
                     <div class="training-card">
-                      <b>需要按数据集训练</b>
+                      <div class="card-title-row">
+                        <b>🎯 在线模型训练</b>
+                        <a class="text-button" routerLink="/tasks">查看训练任务记录 ↗</a>
+                      </div>
                       <p class="muted">
                         训练任务通过独立 training_cpu
-                        队列执行，生成的私有模型只能由创建者或管理员使用。
+                        队列执行。训练产出的模型将持久化存入模型库，可供工作流节点绑定或由管理员设为算子默认模型。
                       </p>
                       @if (auth.hasPermission('algorithm:train')) {
                         <app-data-asset-picker
@@ -396,20 +403,158 @@ export function countActiveOperatorFilters(filters: Record<string, string>): num
                             />
                           </label>
                         </div>
-                        <button
-                          class="primary"
-                          type="button"
-                          [disabled]="!trainingSelection() || trainingBusy()"
-                          (click)="startTraining(operator)"
-                        >
-                          {{ trainingBusy() ? '提交中…' : '开始训练' }}
-                        </button>
-                        @if (trainingMessage()) {
-                          <p class="muted">{{ trainingMessage() }}</p>
-                        }
+                        <div class="training-actions-bar">
+                          <button
+                            class="primary"
+                            type="button"
+                            [disabled]="!trainingSelection() || trainingBusy()"
+                            (click)="startTraining(operator)"
+                          >
+                            {{ trainingBusy() ? '训练任务执行中…' : '开始在线训练' }}
+                          </button>
+                          @if (trainingMessage()) {
+                            <span class="training-feedback" [class.success]="trainingSuccess()">{{
+                              trainingMessage()
+                            }}</span>
+                          }
+                        </div>
                       }
-                      <a class="secondary" routerLink="/tasks">查看训练任务</a>
                     </div>
+
+                    <section class="models-registry-section">
+                      <div class="section-title-row">
+                        <div>
+                          <h3>📦 已训练模型资产 (Model Registry)</h3>
+                          <p class="muted">
+                            查看该算子已训练并就绪的模型权重，支持设置默认模型与公开流转
+                          </p>
+                        </div>
+                        <button
+                          class="secondary btn-sm"
+                          type="button"
+                          (click)="loadModels(operator)"
+                        >
+                          刷新列表
+                        </button>
+                      </div>
+
+                      @if (loadingModels()) {
+                        <p class="muted" style="padding: 12px 0;">正在加载模型列表…</p>
+                      } @else if (models().length === 0) {
+                        <div class="empty-models-card">
+                          <p class="muted">
+                            暂无可用的已训练模型。请在上方选择数据资产并点击“开始在线训练”。
+                          </p>
+                        </div>
+                      } @else {
+                        <div class="models-grid">
+                          @for (model of models(); track model.model_version_id) {
+                            <article
+                              class="model-item-card"
+                              [class.is-default-card]="model.is_default"
+                            >
+                              <div class="model-item-head">
+                                <div class="model-tags-row">
+                                  <strong class="model-code-label">{{ model.version }}</strong>
+                                  @if (model.is_default) {
+                                    <span class="badge badge-default-model">★ 算子默认</span>
+                                  }
+                                  <span
+                                    class="badge"
+                                    [class.badge-ready]="model.status === 'ready'"
+                                    [class.badge-pending]="model.status === 'training'"
+                                  >
+                                    {{ model.status === 'ready' ? '就绪' : model.status }}
+                                  </span>
+                                  <span class="badge badge-vis">{{
+                                    model.visibility === 'public' ? '公开' : '私有'
+                                  }}</span>
+                                </div>
+                                <span class="model-time muted">{{
+                                  model.created_at | date: 'yyyy-MM-dd HH:mm'
+                                }}</span>
+                              </div>
+
+                              <div class="model-item-details">
+                                @if (model.training_dataset; as ds) {
+                                  <div class="detail-line">
+                                    <span class="muted">训练来源：</span>
+                                    <span
+                                      >{{
+                                        ds.monitor_point_name ||
+                                          ds.monitor_point_code ||
+                                          '点位#' + ds.monitor_point_id
+                                      }}
+                                      · {{ ds.metric_code || '流量' }}</span
+                                    >
+                                  </div>
+                                }
+                                @if (model.metrics; as m) {
+                                  <div class="metrics-chips">
+                                    <span class="chip"
+                                      >拟合周期: <b>{{ m['seasonal_slots'] || '-' }} Slots</b></span
+                                    >
+                                    <span class="chip"
+                                      >样本量: <b>{{ m['training_rows'] || '-' }} 条</b></span
+                                    >
+                                    <span class="chip"
+                                      >步长:
+                                      <b>{{
+                                        m['interval_seconds'] ? m['interval_seconds'] + 's' : '-'
+                                      }}</b></span
+                                    >
+                                  </div>
+                                }
+                                @if (model.owner_username) {
+                                  <div class="detail-line" style="font-size: 11px;">
+                                    <span class="muted">创建人：</span>
+                                    <span>{{ model.owner_username }}</span>
+                                  </div>
+                                }
+                              </div>
+
+                              <div class="model-item-actions">
+                                <button
+                                  class="secondary btn-xs"
+                                  type="button"
+                                  (click)="openModelDetail(model)"
+                                >
+                                  基线详情
+                                </button>
+                                @if (
+                                  auth.hasPermission('algorithm:publish') &&
+                                  !model.is_default &&
+                                  model.status === 'ready'
+                                ) {
+                                  <button
+                                    class="secondary btn-xs"
+                                    type="button"
+                                    (click)="setDefaultModel(operator, model)"
+                                  >
+                                    设为算子默认
+                                  </button>
+                                }
+                                @if (
+                                  auth.user()?.id === model.owner_user_id ||
+                                  auth.hasPermission('admin')
+                                ) {
+                                  <button
+                                    class="secondary btn-xs"
+                                    type="button"
+                                    (click)="toggleVisibility(operator, model)"
+                                  >
+                                    {{ model.visibility === 'public' ? '设为私有' : '设为公开' }}
+                                  </button>
+                                }
+                                <a class="primary btn-xs link-btn" [routerLink]="['/workflows/new']"
+                                  >在工作流中使用</a
+                                >
+                              </div>
+                            </article>
+                          }
+                        </div>
+                      }
+                    </section>
                   } @else {
                     <div class="training-card">
                       {{
@@ -511,6 +656,58 @@ export function countActiveOperatorFilters(filters: Record<string, string>): num
         }
       </div>
     </section>
+
+    @if (selectedModelForDetail(); as detailModel) {
+      <div class="modal-backdrop" (click)="selectedModelForDetail.set(null)">
+        <div class="modal-card" (click)="$event.stopPropagation()">
+          <header class="modal-header">
+            <div>
+              <span class="eyebrow">模型基线参数详情</span>
+              <h3>{{ detailModel.version }}</h3>
+            </div>
+            <button
+              class="text-button modal-close-btn"
+              type="button"
+              (click)="selectedModelForDetail.set(null)"
+            >
+              ✕
+            </button>
+          </header>
+          <div class="modal-body">
+            <div class="detail-props-grid">
+              <div>
+                <b>模型版本 ID:</b> <code>{{ detailModel.model_version_id }}</code>
+              </div>
+              <div><b>算法编码:</b> {{ detailModel.algorithm_code || '-' }}</div>
+              <div><b>状态:</b> {{ detailModel.status }}</div>
+              <div><b>可见性:</b> {{ detailModel.visibility === 'public' ? '公开' : '私有' }}</div>
+              <div>
+                <b>是否默认模型:</b> {{ detailModel.is_default ? '★ 是 (算子默认)' : '否' }}
+              </div>
+              <div><b>创建时间:</b> {{ detailModel.created_at | date: 'yyyy-MM-dd HH:mm:ss' }}</div>
+            </div>
+            <h4>训练拟合指标 (Metrics)</h4>
+            <pre>{{ detailModel.metrics | json }}</pre>
+            <h4>模型兼容性约束 (Compatibility)</h4>
+            <pre>{{ detailModel.compatibility | json }}</pre>
+            <h4>元数据与数据快照 (Metadata)</h4>
+            <pre>{{ detailModel.metadata | json }}</pre>
+          </div>
+          <footer class="modal-footer">
+            <button
+              class="secondary"
+              type="button"
+              (click)="copyModelId(detailModel.model_version_id)"
+            >
+              复制模型ID
+            </button>
+            <button class="primary" type="button" (click)="selectedModelForDetail.set(null)">
+              关闭
+            </button>
+          </footer>
+        </div>
+      </div>
+    }
   `,
   styles: `
     :host {
@@ -873,6 +1070,199 @@ export function countActiveOperatorFilters(filters: Record<string, string>): num
       min-height: 36px;
       box-sizing: border-box;
     }
+    .training-header-info {
+      margin-bottom: 14px;
+    }
+    .card-title-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 6px;
+    }
+    .training-actions-bar {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-top: 14px;
+      flex-wrap: wrap;
+    }
+    .training-feedback {
+      font-size: 13px;
+      color: #b45309;
+    }
+    .training-feedback.success {
+      color: #15803d;
+      font-weight: 600;
+    }
+    .models-registry-section {
+      margin-top: 24px;
+      padding-top: 16px;
+      border-top: 1px solid #e4e7ec;
+    }
+    .section-title-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      margin-bottom: 14px;
+      gap: 12px;
+    }
+    .empty-models-card {
+      padding: 20px;
+      border: 1px dashed #cbd5e1;
+      border-radius: 10px;
+      text-align: center;
+      background: #f8fafc;
+    }
+    .models-grid {
+      display: grid;
+      gap: 12px;
+    }
+    .model-item-card {
+      padding: 14px;
+      border: 1px solid #e2e8f0;
+      border-radius: 10px;
+      background: #fff;
+      transition:
+        border-color 0.15s,
+        box-shadow 0.15s;
+    }
+    .model-item-card:hover {
+      border-color: #94a3b8;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.04);
+    }
+    .model-item-card.is-default-card {
+      border-color: #3b82f6;
+      background: #f8fbff;
+    }
+    .model-item-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 8px;
+    }
+    .model-tags-row {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+    .model-code-label {
+      font-size: 14px;
+      color: #0f172a;
+    }
+    .badge-default-model {
+      background: #2563eb;
+      color: #fff;
+      font-weight: 700;
+    }
+    .badge-ready {
+      background: #dcfce7;
+      color: #15803d;
+    }
+    .badge-pending {
+      background: #fef3c7;
+      color: #b45309;
+    }
+    .badge-vis {
+      background: #f1f5f9;
+      color: #475569;
+    }
+    .model-item-details {
+      display: grid;
+      gap: 5px;
+      margin-bottom: 12px;
+      font-size: 12px;
+    }
+    .detail-line {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .metrics-chips {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-top: 4px;
+    }
+    .chip {
+      padding: 2px 8px;
+      background: #f1f5f9;
+      border-radius: 4px;
+      color: #334155;
+      font-size: 11px;
+    }
+    .model-item-actions {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+    .btn-xs {
+      padding: 4px 10px;
+      font-size: 12px;
+      border-radius: 6px;
+      cursor: pointer;
+    }
+    .btn-sm {
+      padding: 6px 12px;
+      font-size: 13px;
+      border-radius: 8px;
+      cursor: pointer;
+    }
+    .link-btn {
+      text-decoration: none;
+    }
+    .modal-backdrop {
+      position: fixed;
+      inset: 0;
+      background: rgba(15, 23, 42, 0.45);
+      display: grid;
+      place-items: center;
+      z-index: 1000;
+      backdrop-filter: blur(2px);
+    }
+    .modal-card {
+      background: #fff;
+      border-radius: 14px;
+      width: min(90vw, 680px);
+      max-height: 85vh;
+      display: flex;
+      flex-direction: column;
+      box-shadow: 0 20px 40px rgba(0, 0, 0, 0.15);
+    }
+    .modal-header {
+      padding: 16px 20px;
+      border-bottom: 1px solid #e2e8f0;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .modal-close-btn {
+      font-size: 18px;
+      cursor: pointer;
+    }
+    .modal-body {
+      padding: 20px;
+      overflow: auto;
+      display: grid;
+      gap: 12px;
+    }
+    .detail-props-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      padding: 12px;
+      background: #f8fafc;
+      border-radius: 8px;
+      font-size: 12px;
+    }
+    .modal-footer {
+      padding: 14px 20px;
+      border-top: 1px solid #e2e8f0;
+      display: flex;
+      justify-content: flex-end;
+      gap: 10px;
+    }
     .version-row {
       display: grid;
       grid-template-columns: 1fr 1fr auto;
@@ -1023,12 +1413,16 @@ export class OperatorCenterPage implements OnDestroy {
   readonly templates = signal<WorkflowTemplateSummary[]>([]);
   readonly selected = signal<OperatorSummary | null>(null);
   readonly documents = signal<AlgorithmDocument[]>([]);
+  readonly models = signal<ModelVersionSummary[]>([]);
+  readonly loadingModels = signal(false);
+  readonly selectedModelForDetail = signal<ModelVersionSummary | null>(null);
   readonly activeTab = signal<
     'overview' | 'contract' | 'training' | 'versions' | 'documents' | 'usage'
   >('overview');
   readonly message = signal('');
   readonly trainingSelection = signal<DataAssetSelection | null>(null);
   readonly trainingBusy = signal(false);
+  readonly trainingSuccess = signal(false);
   readonly trainingMessage = signal('');
   readonly filtersOpen = signal(false);
   readonly listWidth = signal(catalogWidthDefault);
@@ -1087,13 +1481,14 @@ export class OperatorCenterPage implements OnDestroy {
         next: (result) => {
           this.operators.set(result.items || []);
           const current = this.selected();
-          this.selected.set(
+          const target =
             this.operators().find((item) => item.code === current?.code) ||
-              this.operators()[0] ||
-              null,
-          );
-          if (this.selected() && this.activeTab() === 'documents') {
-            this.loadDocuments(this.selected()!);
+            this.operators()[0] ||
+            null;
+          this.selected.set(target);
+          if (target) {
+            if (this.activeTab() === 'documents') this.loadDocuments(target);
+            if (this.activeTab() === 'training') this.loadModels(target);
           }
         },
         error: () => this.message.set('算子目录加载失败，请检查权限或服务状态。'),
@@ -1141,18 +1536,84 @@ export class OperatorCenterPage implements OnDestroy {
   select(operator: OperatorSummary): void {
     this.selected.set(operator);
     this.documents.set([]);
+    this.models.set([]);
     this.trainingSelection.set(null);
     this.trainingMessage.set('');
+    this.trainingSuccess.set(false);
     if (this.activeTab() === 'documents') this.loadDocuments(operator);
+    if (this.activeTab() === 'training') this.loadModels(operator);
     this.api.get<OperatorSummary>(`/api/v1/operators/${operator.code}`).subscribe({
       next: (detail) => {
         this.selected.set(detail);
         if (this.activeTab() === 'documents') this.loadDocuments(detail);
+        if (this.activeTab() === 'training') this.loadModels(detail);
       },
     });
   }
   setTrainingSelection(selection: DataAssetSelection | null): void {
     this.trainingSelection.set(selection);
+  }
+  loadModels(operator: OperatorSummary): void {
+    const code = this.algorithmCode(operator);
+    if (!code || !this.auth.hasPermission('model:read')) {
+      this.models.set([]);
+      return;
+    }
+    this.loadingModels.set(true);
+    this.api
+      .get<ModelVersionSummary[]>('/api/v1/model-versions', { algorithm_code: code })
+      .subscribe({
+        next: (items) => {
+          this.models.set(items || []);
+          this.loadingModels.set(false);
+        },
+        error: () => {
+          this.models.set([]);
+          this.loadingModels.set(false);
+        },
+      });
+  }
+  setDefaultModel(operator: OperatorSummary, model: ModelVersionSummary): void {
+    const code = this.algorithmCode(operator);
+    if (!code) return;
+    this.api
+      .post<Record<string, unknown>, { model_version_id: string }>(
+        `/api/v1/algorithms/${code}/default-model`,
+        { model_version_id: model.model_version_id },
+      )
+      .subscribe({
+        next: () => {
+          this.notice.success(`已将 ${model.version} 设为算子默认模型`);
+          this.loadModels(operator);
+          this.select(operator);
+        },
+        error: () => this.notice.error('设为默认模型失败，请检查权限。'),
+      });
+  }
+  toggleVisibility(operator: OperatorSummary, model: ModelVersionSummary): void {
+    const nextVis = model.visibility === 'public' ? 'private' : 'public';
+    this.api
+      .post<ModelVersionSummary, { visibility: string }>(
+        `/api/v1/model-versions/${model.model_version_id}/visibility`,
+        { visibility: nextVis },
+      )
+      .subscribe({
+        next: () => {
+          this.notice.success(`模型可见性已更新为：${nextVis === 'public' ? '公开' : '私有'}`);
+          this.loadModels(operator);
+        },
+        error: () => this.notice.error('修改模型可见性失败，请检查权限。'),
+      });
+  }
+  openModelDetail(model: ModelVersionSummary): void {
+    this.selectedModelForDetail.set(model);
+  }
+  copyModelId(id: string): void {
+    if (navigator?.clipboard) {
+      navigator.clipboard.writeText(id).then(() => this.notice.success('模型 ID 已复制到剪贴板'));
+    } else {
+      this.notice.success(`模型 ID: ${id}`);
+    }
   }
   startTraining(operator: OperatorSummary): void {
     const selection = this.trainingSelection();
@@ -1163,7 +1624,8 @@ export class OperatorCenterPage implements OnDestroy {
       return;
     }
     this.trainingBusy.set(true);
-    this.trainingMessage.set('正在创建训练任务…');
+    this.trainingSuccess.set(false);
+    this.trainingMessage.set('正在创建并调度训练任务…');
     this.api
       .post<Record<string, unknown>, Record<string, unknown>>(
         `/api/v1/algorithms/${algorithmCode}/training-runs`,
@@ -1182,20 +1644,66 @@ export class OperatorCenterPage implements OnDestroy {
       )
       .subscribe({
         next: (run) => {
-          this.trainingBusy.set(false);
-          this.trainingMessage.set(
-            `训练任务已提交：${String(run['training_run_id'] || run['task_id'] || '已受理')}`,
-          );
+          const runId = String(run['training_run_id'] || run['task_id'] || '');
+          this.trainingMessage.set(`训练任务已提交 (ID: ${runId})，正在后台执行并拟合模型…`);
+          const taskId = String(run['task_id'] || '');
+          if (taskId) {
+            this.pollTrainingTask(taskId, operator);
+          } else {
+            this.trainingBusy.set(false);
+            this.trainingSuccess.set(true);
+            this.loadModels(operator);
+          }
         },
         error: () => {
           this.trainingBusy.set(false);
+          this.trainingSuccess.set(false);
           this.trainingMessage.set('训练任务提交失败，请检查数据版本、权限和服务状态。');
         },
       });
   }
+  private pollTrainingTask(taskId: string, operator: OperatorSummary, attempts = 0): void {
+    if (attempts > 30) {
+      this.trainingBusy.set(false);
+      this.trainingMessage.set('训练任务在后台继续运行中，请稍后刷新模型列表。');
+      this.loadModels(operator);
+      return;
+    }
+    setTimeout(() => {
+      this.api.get<Record<string, unknown>>(`/api/v1/tasks/${taskId}`).subscribe({
+        next: (task) => {
+          const status = String(task['status'] || '');
+          if (status === 'success') {
+            this.trainingBusy.set(false);
+            this.trainingSuccess.set(true);
+            this.trainingMessage.set('训练成功完成！新模型已生成并已加入下方模型资产库。');
+            this.notice.success('算法在线训练完成，新模型已就绪！');
+            this.loadModels(operator);
+          } else if (status === 'failed' || status === 'cancelled') {
+            this.trainingBusy.set(false);
+            this.trainingSuccess.set(false);
+            this.trainingMessage.set(
+              `训练任务已${status === 'failed' ? '失败' : '取消'}：${String(task['error_message'] || task['message'] || '')}`,
+            );
+          } else {
+            const progress = Number(task['progress'] || 0);
+            this.trainingMessage.set(`正在训练中 (${progress}%)… ${String(task['message'] || '')}`);
+            this.pollTrainingTask(taskId, operator, attempts + 1);
+          }
+        },
+        error: () => {
+          this.trainingBusy.set(false);
+          this.loadModels(operator);
+        },
+      });
+    }, 1500);
+  }
   setTab(tab: 'overview' | 'contract' | 'training' | 'versions' | 'documents' | 'usage'): void {
     this.activeTab.set(tab);
-    if (tab === 'documents' && this.selected()) this.loadDocuments(this.selected()!);
+    if (this.selected()) {
+      if (tab === 'documents') this.loadDocuments(this.selected()!);
+      if (tab === 'training') this.loadModels(this.selected()!);
+    }
   }
   algorithmTags(operator: OperatorSummary): Array<{ code: string; name: string }> {
     const tags = operator.active_version?.algorithm?.['tags'];

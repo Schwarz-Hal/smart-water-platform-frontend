@@ -6,12 +6,16 @@ import {
   OnDestroy,
   Signal,
   ViewChild,
+  effect,
   inject,
+  signal,
 } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
+import { RouterLink } from '@angular/router';
 
-import { DataAssetSelection } from '../../core/models/api.models';
+import { DataAssetSelection, ModelVersionSummary } from '../../core/models/api.models';
+import { ApiClient } from '../../core/services/api-client.service';
 import { DataAssetPickerComponent } from '../../shared/components/data-asset-picker.component';
 import { OperatorNameService } from '../../core/services/operator-name.service';
 import {
@@ -372,7 +376,13 @@ export class WorkflowCanvasPanelComponent implements AfterViewInit, OnDestroy {
 
 @Component({
   selector: 'app-node-inspector-panel',
-  imports: [FormsModule, MatButtonModule, DataAssetPickerComponent, OperatorParameterFormComponent],
+  imports: [
+    FormsModule,
+    MatButtonModule,
+    RouterLink,
+    DataAssetPickerComponent,
+    OperatorParameterFormComponent,
+  ],
   template: `
     <section class="panel-content">
       @if (host.selectedNode(); as node) {
@@ -397,6 +407,83 @@ export class WorkflowCanvasPanelComponent implements AfterViewInit, OnDestroy {
             >
           }
         </div>
+
+        @if (requiresModel(node)) {
+          <section class="model-binding-section">
+            <h3>🤖 算法模型绑定 (Model Binding)</h3>
+            <p class="help-tip">
+              该算子需要指定模型权重以执行推理。你可以使用系统默认模型或选择已训练的专属模型。
+            </p>
+
+            @if (loadingModels()) {
+              <small class="muted">正在加载可用模型…</small>
+            } @else {
+              <div class="model-select-group">
+                <label class="model-option">
+                  <input
+                    type="radio"
+                    name="model_choice_{{ node.id }}"
+                    [checked]="!selectedModelId(node)"
+                    (change)="onModelChoiceChange(node, '')"
+                  />
+                  <div class="option-content">
+                    <span class="option-title"><b>使用算子默认模型</b> (推荐)</span>
+                    <small class="muted">使用该算子当前活跃发布版本绑定的默认模型权重</small>
+                  </div>
+                </label>
+
+                <label class="model-option">
+                  <input
+                    type="radio"
+                    name="model_choice_{{ node.id }}"
+                    [checked]="!!selectedModelId(node)"
+                    (change)="
+                      onModelChoiceChange(
+                        node,
+                        availableModels()[0]?.model_version_id || '__none__'
+                      )
+                    "
+                  />
+                  <div class="option-content">
+                    <span class="option-title"><b>指定专属训练模型</b></span>
+                    @if (availableModels().length > 0) {
+                      <select
+                        class="model-picker-select"
+                        [ngModel]="selectedModelId(node)"
+                        (ngModelChange)="onModelSelect(node, $event)"
+                      >
+                        <option value="" disabled>-- 请选择模型版本 --</option>
+                        @for (m of availableModels(); track m.model_version_id) {
+                          <option [value]="m.model_version_id">
+                            {{ m.version }} {{ m.is_default ? '★ 默认' : '' }} ·
+                            {{
+                              m.training_dataset?.monitor_point_name ||
+                                m.training_dataset?.monitor_point_code ||
+                                '点位#' + m.training_dataset?.monitor_point_id ||
+                                '模型'
+                            }}
+                          </option>
+                        }
+                      </select>
+                    } @else {
+                      <div class="no-models-tip">
+                        <small class="warning-text">当前暂无可用的训练模型。</small>
+                        <a
+                          class="text-link"
+                          [routerLink]="['/operators']"
+                          [queryParams]="{ kind: 'algorithm', tab: 'training' }"
+                        >
+                          前往算子中心训练新模型 ↗
+                        </a>
+                      </div>
+                    }
+                  </div>
+                </label>
+              </div>
+            }
+          </section>
+        }
+
         <h3>参数</h3>
         <app-operator-parameter-form
           [schema]="node.definition?.parameter_schema || {}"
@@ -490,6 +577,69 @@ export class WorkflowCanvasPanelComponent implements AfterViewInit, OnDestroy {
       background: var(--sw-color-info-soft);
       color: var(--sw-color-info);
     }
+    .model-binding-section {
+      margin-top: 18px;
+      padding: 12px;
+      background: var(--sw-surface-raised, #f8fafc);
+      border: 1px solid var(--sw-border, #e2e8f0);
+      border-radius: var(--sw-radius-md, 8px);
+    }
+    .model-binding-section h3 {
+      margin: 0 0 4px;
+      font-size: 13px;
+    }
+    .help-tip {
+      font-size: 12px;
+      color: var(--sw-text-muted, #64748b);
+      margin: 0 0 10px;
+      line-height: 1.4;
+    }
+    .model-select-group {
+      display: grid;
+      gap: 10px;
+    }
+    .model-option {
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+      cursor: pointer;
+    }
+    .model-option input[type='radio'] {
+      margin-top: 3px;
+    }
+    .option-content {
+      flex: 1;
+      display: grid;
+      gap: 3px;
+    }
+    .option-title {
+      font-size: 13px;
+    }
+    .model-picker-select {
+      width: 100%;
+      margin-top: 4px;
+      padding: 6px 8px;
+      border: 1px solid var(--sw-border, #cbd5e1);
+      border-radius: var(--sw-radius-sm, 6px);
+      background: var(--sw-surface, #fff);
+      color: var(--sw-text-primary, #0f172a);
+      font-size: 12px;
+    }
+    .no-models-tip {
+      display: grid;
+      gap: 3px;
+      margin-top: 4px;
+    }
+    .warning-text {
+      color: #b45309;
+      font-size: 12px;
+    }
+    .text-link {
+      color: #2563eb;
+      font-size: 12px;
+      text-decoration: none;
+      font-weight: 600;
+    }
     .outputs {
       display: grid;
       gap: 7px;
@@ -521,4 +671,72 @@ export class WorkflowCanvasPanelComponent implements AfterViewInit, OnDestroy {
 export class NodeInspectorPanelComponent {
   readonly host = inject(WorkflowEditorPanelBridge).requireHost();
   readonly operatorNames = inject(OperatorNameService);
+  private readonly api = inject(ApiClient);
+
+  readonly availableModels = signal<ModelVersionSummary[]>([]);
+  readonly loadingModels = signal(false);
+  private lastFetchedCode: string | null = null;
+
+  constructor() {
+    effect(() => {
+      const node = this.host.selectedNode();
+      if (!node) {
+        this.lastFetchedCode = null;
+        this.availableModels.set([]);
+        return;
+      }
+      if (this.requiresModel(node)) {
+        if (this.lastFetchedCode !== node.node_code) {
+          this.lastFetchedCode = node.node_code;
+          this.loadModels(node.node_code);
+        }
+      } else {
+        this.lastFetchedCode = null;
+        this.availableModels.set([]);
+      }
+    });
+  }
+
+  requiresModel(node: EditorNode): boolean {
+    if (node.node_code === 'seasonal_robust_anomaly') return true;
+    const alg = node.definition?.algorithm;
+    if (alg && typeof alg === 'object') {
+      const req = (alg as Record<string, unknown>)['training_requirement'];
+      const strat = (alg as Record<string, unknown>)['model_strategy'];
+      if (req === 'required' || strat === 'fit_per_dataset') return true;
+    }
+    return false;
+  }
+
+  selectedModelId(node: EditorNode): string {
+    return String(node.parameters?.['model_version_id'] || '');
+  }
+
+  onModelChoiceChange(node: EditorNode, modelId: string): void {
+    if (modelId === '__none__') {
+      this.host.setParameter(node.id, 'model_version_id', '');
+    } else {
+      this.host.setParameter(node.id, 'model_version_id', modelId);
+    }
+  }
+
+  onModelSelect(node: EditorNode, modelId: string): void {
+    this.host.setParameter(node.id, 'model_version_id', modelId);
+  }
+
+  private loadModels(algorithmCode: string): void {
+    this.loadingModels.set(true);
+    this.api
+      .get<ModelVersionSummary[]>('/api/v1/model-versions', { algorithm_code: algorithmCode })
+      .subscribe({
+        next: (items) => {
+          this.availableModels.set(items || []);
+          this.loadingModels.set(false);
+        },
+        error: () => {
+          this.availableModels.set([]);
+          this.loadingModels.set(false);
+        },
+      });
+  }
 }
