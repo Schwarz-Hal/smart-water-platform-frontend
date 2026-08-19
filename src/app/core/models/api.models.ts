@@ -760,3 +760,30 @@ export interface ExternalAlgorithmPackage {
     original_filename: string;
   }>;
 }
+
+export interface ModelVersionSummary {
+  model_version_id: string;
+  algorithm_version_id: number;
+  algorithm_code?: string | null;
+  algorithm_name?: string | null;
+  training_run_id?: string | null;
+  owner_user_id?: number | null;
+  owner_username?: string | null;
+  version: string;
+  status: 'training' | 'ready' | 'review_pending' | 'published' | 'retired' | 'blocked' | string;
+  visibility: 'private' | 'public' | string;
+  is_default: boolean;
+  metadata?: Record<string, unknown>;
+  metrics?: Record<string, unknown>;
+  compatibility?: Record<string, unknown>;
+  training_dataset?: {
+    dataset_version_id: number;
+    metric_code?: string | null;
+    monitor_point_id?: number | null;
+    monitor_point_name?: string | null;
+    monitor_point_code?: string | null;
+    snapshot?: Record<string, unknown>;
+  } | null;
+  created_at: string;
+  published_at?: string | null;
+}

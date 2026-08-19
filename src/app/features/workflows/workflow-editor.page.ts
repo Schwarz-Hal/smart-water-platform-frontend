@@ -47,6 +47,7 @@ export interface Definition {
   };
   ui_schema?: Record<string, Record<string, unknown>>;
   default_params?: Record<string, unknown>;
+  algorithm?: Record<string, unknown> | null;
 }
 export interface EditorNode {
   id: string;
@@ -79,13 +80,11 @@ export interface Graph {
   bindings?: Record<string, StoredBinding>;
 }
 
-
 @Component({
   selector: 'app-workflow-editor-page',
   imports: [],
   template: `<div class="editor-host"></div>`,
   styles: ``,
-  
 })
 export class WorkflowEditorPage implements AfterViewInit, OnDestroy {
   readonly operatorNames = inject(OperatorNameService);
@@ -166,8 +165,6 @@ export class WorkflowEditorPage implements AfterViewInit, OnDestroy {
     return this.bindingNodes().every((node) => Boolean(this.bindings.get(node.id)));
   });
 
-
-
   constructor() {
     if (typeof window !== 'undefined') {
       window.addEventListener('beforeunload', this.beforeUnload);
@@ -238,7 +235,9 @@ export class WorkflowEditorPage implements AfterViewInit, OnDestroy {
       parameter_schema: version.parameter_schema as Definition['parameter_schema'],
       ui_schema: version.ui_schema as Definition['ui_schema'],
       default_params:
-        ((version.algorithm?.['active_release'] as Record<string, unknown> | null)?.['default_params'] as Record<string, unknown> | undefined) ||
+        ((version.algorithm?.['active_release'] as Record<string, unknown> | null)?.[
+          'default_params'
+        ] as Record<string, unknown> | undefined) ||
         (version.algorithm?.['default_params'] as Record<string, unknown> | undefined),
     };
   }
@@ -409,7 +408,9 @@ export class WorkflowEditorPage implements AfterViewInit, OnDestroy {
           (p) => p.key === String(connection.targetInput),
         );
         if (sourcePort && targetPort && sourcePort.data_type !== targetPort.data_type) {
-          this.showError(`无法连接：端口类型不匹配（${sourcePort.data_type} → ${targetPort.data_type}）`);
+          this.showError(
+            `无法连接：端口类型不匹配（${sourcePort.data_type} → ${targetPort.data_type}）`,
+          );
           return;
         }
       }
