@@ -634,6 +634,7 @@ export interface OperatorVersionSummary {
   parameter_schema: Record<string, unknown>;
   ui_schema: Record<string, unknown>;
   visualization_schema: Record<string, unknown>;
+  tags?: Array<{ dimension: string; code: string; name: string }>;
   algorithm: Record<string, unknown> | null;
   available: boolean;
   runtime_ready?: boolean;
@@ -651,6 +652,7 @@ export interface OperatorSummary {
   available: boolean;
   unavailable_reason: string | null;
   can_manage: boolean;
+  tags?: Array<{ dimension: string; code: string; name: string }>;
   active_version: OperatorVersionSummary | null;
   version_count: number;
   versions?: OperatorVersionSummary[];
