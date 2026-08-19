@@ -128,6 +128,14 @@ export interface AlgorithmRunRequest {
   algorithm_params: Record<string, unknown>;
 }
 
+export interface TaskTargetResource {
+  type: string;
+  id: string | number;
+  route: string;
+  label: string;
+  run_id?: string;
+}
+
 export interface TaskDetail {
   task_id: string;
   task_type: string;
@@ -135,6 +143,7 @@ export interface TaskDetail {
   progress: number;
   trace_id: string;
   dataset_version_id: number | null;
+  target_resource?: TaskTargetResource | null;
   error_code: string | null;
   error_message: string | null;
   created_at: string;
