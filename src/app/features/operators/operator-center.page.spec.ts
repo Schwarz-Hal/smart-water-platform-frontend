@@ -1,3 +1,4 @@
+import '@angular/compiler';
 import { describe, expect, it } from 'vitest';
 
 import { AlgorithmDocument, OperatorSummary } from '../../core/models/api.models';
@@ -5,6 +6,7 @@ import {
   clampOperatorCatalogWidth,
   countActiveOperatorFilters,
   currentAlgorithmDocumentVersion,
+  extractParameterSpecs,
   linkedAlgorithmCode,
 } from './operator-center.page';
 
@@ -104,3 +106,54 @@ describe('operator catalogue controls', () => {
     ).toBe(2);
   });
 });
+
+describe('parameter specification extraction', () => {
+  it('extracts structured parameter specs with titles, constraints, and default values', () => {
+    const op = operator({ default_params: { horizon: 96, mode: 'fast' } });
+    if (op.active_version) {
+      op.active_version.parameter_schema = {
+        type: 'object',
+        properties: {
+          horizon: {
+            title: '预测步长',
+            type: 'integer',
+            minimum: 1,
+            maximum: 720,
+            default: 96,
+            description: '前向预测的时间步数',
+          },
+          mode: {
+            title: '运行模式',
+            type: 'string',
+            enum: ['fast', 'accurate'],
+            default: 'fast',
+          },
+        },
+      };
+      op.active_version.default_parameters = { horizon: 120, mode: 'accurate' };
+      op.active_version.ui_schema = {
+        horizon: { unit: '步' },
+      };
+
+      const specs = extractParameterSpecs(op.active_version);
+      expect(specs.length).toBe(2);
+
+      const horizonSpec = specs.find((s) => s.key === 'horizon');
+      expect(horizonSpec).toBeDefined();
+      expect(horizonSpec?.title).toBe('预测步长');
+      expect(horizonSpec?.type).toBe('整数');
+      expect(horizonSpec?.currentValue).toBe(120);
+      expect(horizonSpec?.defaultValue).toBe(96);
+      expect(horizonSpec?.constraints).toContain('[1, 720]');
+      expect(horizonSpec?.unit).toBe('步');
+
+      const modeSpec = specs.find((s) => s.key === 'mode');
+      expect(modeSpec).toBeDefined();
+      expect(modeSpec?.title).toBe('运行模式');
+      expect(modeSpec?.type).toBe('文本');
+      expect(modeSpec?.currentValue).toBe('accurate');
+      expect(modeSpec?.constraints).toContain('fast | accurate');
+    }
+  });
+});
+

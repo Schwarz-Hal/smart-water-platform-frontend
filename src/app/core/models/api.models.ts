@@ -631,6 +631,7 @@ export interface OperatorVersionSummary {
   contract_sha256: string | null;
   input_ports: Array<Record<string, unknown>>;
   output_ports: Array<Record<string, unknown>>;
+  default_parameters?: Record<string, unknown>;
   parameter_schema: Record<string, unknown>;
   ui_schema: Record<string, unknown>;
   visualization_schema: Record<string, unknown>;
