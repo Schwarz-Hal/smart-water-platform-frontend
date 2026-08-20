@@ -9,6 +9,7 @@ import {
   AlgorithmDocumentVersion,
   ModelVersionSummary,
   OperatorSummary,
+  OperatorVersionSummary,
   WorkflowTemplateSummary,
 } from '../../core/models/api.models';
 import { ApiClient } from '../../core/services/api-client.service';
@@ -17,6 +18,7 @@ import { NotificationService } from '../../core/services/notification.service';
 import { OperatorNameService } from '../../core/services/operator-name.service';
 import { AuthService } from '../../core/services/auth.service';
 import { DataAssetPickerComponent } from '../../shared/components/data-asset-picker.component';
+import { OperatorParameterFormComponent } from '../../shared/components/operator-parameter-form.component';
 import { DataAssetSelection } from '../../core/models/api.models';
 
 export function linkedAlgorithmCode(operator: OperatorSummary): string | null {
@@ -60,9 +62,86 @@ export function countActiveOperatorFilters(filters: Record<string, string>): num
   return Object.values(filters).filter(Boolean).length;
 }
 
+export interface ParameterSpecItem {
+  key: string;
+  title: string;
+  type: string;
+  description: string;
+  defaultValue: unknown;
+  currentValue: unknown;
+  constraints: string;
+  enumOptions?: unknown[];
+  unit?: string;
+}
+
+export function extractParameterSpecs(version: OperatorVersionSummary): ParameterSpecItem[] {
+  const schema = version.parameter_schema || {};
+  const properties = (schema['properties'] as Record<string, Record<string, unknown>>) || {};
+  const defaults =
+    version.default_parameters ||
+    (version.algorithm?.['default_params'] as Record<string, unknown>) ||
+    {};
+  const uiSchema = (version.ui_schema as Record<string, Record<string, unknown>>) || {};
+
+  const keys = Array.from(new Set([...Object.keys(properties), ...Object.keys(defaults)]));
+  return keys.map((key) => {
+    const prop = properties[key] || {};
+    const ui = uiSchema[key] || {};
+    const title = String(prop['title'] || key);
+    const rawType = String(
+      prop['type'] || (defaults[key] !== undefined ? typeof defaults[key] : 'any'),
+    );
+    const typeMap: Record<string, string> = {
+      integer: '整数',
+      number: '数值',
+      string: '文本',
+      boolean: '布尔开关',
+      object: '结构化对象',
+      array: '列表数组',
+    };
+    const type = typeMap[rawType] || rawType;
+    const description = String(prop['description'] || '');
+    const defaultValue = prop['default'] !== undefined ? prop['default'] : defaults[key];
+    const currentValue = defaults[key] !== undefined ? defaults[key] : defaultValue;
+
+    const constraintsList: string[] = [];
+    if (prop['minimum'] !== undefined && prop['maximum'] !== undefined) {
+      constraintsList.push(`区间 [${prop['minimum']}, ${prop['maximum']}]`);
+    } else if (prop['minimum'] !== undefined) {
+      constraintsList.push(`最小值 ≥ ${prop['minimum']}`);
+    } else if (prop['maximum'] !== undefined) {
+      constraintsList.push(`最大值 ≤ ${prop['maximum']}`);
+    }
+    if (Array.isArray(prop['enum'])) {
+      constraintsList.push(`选项: ${prop['enum'].join(' | ')}`);
+    }
+    if (prop['minLength'] !== undefined || prop['maxLength'] !== undefined) {
+      constraintsList.push(`长度: ${prop['minLength'] ?? 0} ~ ${prop['maxLength'] ?? '不限'}`);
+    }
+
+    return {
+      key,
+      title,
+      type,
+      description,
+      defaultValue,
+      currentValue,
+      constraints: constraintsList.join('；'),
+      enumOptions: Array.isArray(prop['enum']) ? prop['enum'] : undefined,
+      unit: typeof ui['unit'] === 'string' ? ui['unit'] : undefined,
+    };
+  });
+}
+
 @Component({
   selector: 'app-operator-center-page',
-  imports: [CommonModule, FormsModule, RouterLink, DataAssetPickerComponent],
+  imports: [
+    CommonModule,
+    FormsModule,
+    RouterLink,
+    DataAssetPickerComponent,
+    OperatorParameterFormComponent,
+  ],
   template: `
     <header class="page-header">
       <div>
@@ -340,11 +419,116 @@ export function countActiveOperatorFilters(filters: Record<string, string>): num
                     }
                   </div>
                 </div>
-                <h3>默认推理参数</h3>
-                <pre>{{ version.algorithm?.['default_params'] | json }}</pre>
-                <details>
-                  <summary>参数契约</summary>
-                  <pre>{{ version.parameter_schema | json }}</pre>
+
+                <div class="section-title-row">
+                  <div class="section-title-text">
+                    <h3>默认推理与执行参数</h3>
+                    <p class="section-subtitle">
+                      工作流节点未配置个性化覆写时使用的系统默认参数基准。
+                    </p>
+                  </div>
+                  @if (auth.hasPermission('operator:manage') && !editingDefaults()) {
+                    <button
+                      class="secondary btn-sm edit-params-btn"
+                      type="button"
+                      (click)="openEditDefaults(version)"
+                    >
+                      <span>⚙</span> 调整默认参数
+                    </button>
+                  }
+                </div>
+
+                @if (editingDefaults()) {
+                  <div class="params-edit-card" aria-label="调整算子默认参数">
+                    <div class="edit-card-header">
+                      <div>
+                        <strong>编辑版本 v{{ version.version }} 默认参数</strong>
+                        <p class="muted" style="margin-top: 2px; font-size: 12px;">
+                          修改后的参数将作为该算子版本后续所有新建工作流节点的默认执行配置。
+                        </p>
+                      </div>
+                      <div class="edit-actions-top">
+                        <button
+                          class="text-button"
+                          type="button"
+                          (click)="resetToSchemaDefaults(version)"
+                        >
+                          恢复出厂预设
+                        </button>
+                      </div>
+                    </div>
+
+                    <div class="edit-card-form">
+                      <app-operator-parameter-form
+                        [schema]="version.parameter_schema"
+                        [uiSchema]="asUiSchema(version.ui_schema)"
+                        [model]="defaultParamsFormModel()"
+                        (parametersChange)="onDefaultParamsChange($event)"
+                        (validityChange)="onDefaultParamsValidityChange($event)"
+                      />
+                    </div>
+
+                    <div class="edit-card-footer">
+                      <button
+                        class="secondary btn-sm"
+                        type="button"
+                        [disabled]="savingDefaults()"
+                        (click)="cancelEditDefaults()"
+                      >
+                        取消
+                      </button>
+                      <button
+                        class="primary btn-sm"
+                        type="button"
+                        [disabled]="!defaultParamsValid() || savingDefaults()"
+                        (click)="saveDefaultParameters(operator, version)"
+                      >
+                        {{ savingDefaults() ? '正在保存…' : '保存生效' }}
+                      </button>
+                    </div>
+                  </div>
+                } @else {
+                  <div class="params-spec-table">
+                    @for (spec of getParameterSpecs(version); track spec.key) {
+                      <div class="param-row">
+                        <div class="param-main">
+                          <div class="param-name-line">
+                            <span class="param-title">{{ spec.title }}</span>
+                            <code class="param-key">{{ spec.key }}</code>
+                            <span class="param-type-badge">{{ spec.type }}</span>
+                            @if (spec.unit) {
+                              <span class="param-unit-badge">{{ spec.unit }}</span>
+                            }
+                          </div>
+                          @if (spec.description) {
+                            <p class="param-desc">{{ spec.description }}</p>
+                          }
+                          @if (spec.constraints) {
+                            <div class="param-constraints">
+                              <span class="constraint-label">约束：</span>
+                              <span>{{ spec.constraints }}</span>
+                            </div>
+                          }
+                        </div>
+                        <div class="param-value-col">
+                          <span class="param-val-label">默认值</span>
+                          <span class="param-val-pill">{{ formatParamValue(spec.currentValue) }}</span>
+                        </div>
+                      </div>
+                    } @empty {
+                      <p class="muted">该算子没有可配置的默认参数。</p>
+                    }
+                  </div>
+                }
+
+                <details class="raw-contract-details">
+                  <summary>查看底层原始 JSON 契约</summary>
+                  <div class="raw-contract-content">
+                    <h4>参数契约 Schema (JSON Schema)</h4>
+                    <pre>{{ version.parameter_schema | json }}</pre>
+                    <h4>当前默认参数快照 (Raw JSON)</h4>
+                    <pre>{{ (version.default_parameters || version.algorithm?.['default_params'] || {}) | json }}</pre>
+                  </div>
                 </details>
               </div>
             }
@@ -1023,6 +1207,177 @@ export function countActiveOperatorFilters(filters: Record<string, string>): num
     details {
       margin-top: 16px;
     }
+    .section-subtitle {
+      color: #64748b;
+      font-size: 12px;
+      margin-top: 2px;
+    }
+    .edit-params-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 12px;
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+    .params-spec-table {
+      display: grid;
+      gap: 10px;
+      margin-bottom: 16px;
+    }
+    .param-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      padding: 12px 14px;
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
+      border-radius: 10px;
+      gap: 16px;
+      transition: background 0.15s, border-color 0.15s;
+    }
+    .param-row:hover {
+      background: #f1f5f9;
+      border-color: #cbd5e1;
+    }
+    .param-main {
+      flex: 1;
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .param-name-line {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .param-title {
+      font-weight: 600;
+      font-size: 14px;
+      color: #1e293b;
+    }
+    .param-key {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-size: 11px;
+      background: #e2e8f0;
+      color: #475569;
+      padding: 2px 6px;
+      border-radius: 4px;
+    }
+    .param-type-badge {
+      font-size: 11px;
+      padding: 2px 7px;
+      border-radius: 999px;
+      background: #e0f2fe;
+      color: #0369a1;
+      font-weight: 500;
+    }
+    .param-unit-badge {
+      font-size: 11px;
+      padding: 2px 6px;
+      border-radius: 4px;
+      background: #fef3c7;
+      color: #92400e;
+    }
+    .param-desc {
+      font-size: 12px;
+      color: #475569;
+      margin: 0;
+      line-height: 1.4;
+    }
+    .param-constraints {
+      font-size: 11px;
+      color: #64748b;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .constraint-label {
+      color: #94a3b8;
+    }
+    .param-value-col {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+      gap: 4px;
+      flex-shrink: 0;
+    }
+    .param-val-label {
+      font-size: 11px;
+      color: #94a3b8;
+    }
+    .param-val-pill {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-size: 12px;
+      font-weight: 600;
+      padding: 4px 10px;
+      background: #eff6ff;
+      border: 1px solid #bfdbfe;
+      color: #1d4ed8;
+      border-radius: 6px;
+      max-width: 220px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .params-edit-card {
+      margin-bottom: 18px;
+      padding: 16px;
+      border: 1px solid #93c5fd;
+      border-radius: 12px;
+      background: #f0f7ff;
+      box-shadow: 0 4px 12px rgba(15, 103, 201, 0.08);
+      display: grid;
+      gap: 14px;
+    }
+    .edit-card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 12px;
+      padding-bottom: 10px;
+      border-bottom: 1px solid #dbeafe;
+    }
+    .edit-card-header strong {
+      font-size: 14px;
+      color: #1e3a8a;
+    }
+    .edit-card-form {
+      padding: 8px 0;
+    }
+    .edit-card-footer {
+      display: flex;
+      justify-content: flex-end;
+      gap: 10px;
+      padding-top: 10px;
+      border-top: 1px solid #dbeafe;
+    }
+    .raw-contract-details {
+      margin-top: 20px;
+      padding-top: 12px;
+      border-top: 1px dashed #cbd5e1;
+    }
+    .raw-contract-details summary {
+      color: #64748b;
+      font-size: 12px;
+      cursor: pointer;
+      user-select: none;
+    }
+    .raw-contract-details summary:hover {
+      color: #0f67c9;
+    }
+    .raw-contract-content {
+      margin-top: 10px;
+    }
+    .raw-contract-content h4 {
+      font-size: 12px;
+      margin: 8px 0 4px;
+      color: #475569;
+    }
     pre {
       white-space: pre-wrap;
       overflow: auto;
@@ -1426,6 +1781,10 @@ export class OperatorCenterPage implements OnDestroy {
   readonly trainingMessage = signal('');
   readonly filtersOpen = signal(false);
   readonly listWidth = signal(catalogWidthDefault);
+  readonly editingDefaults = signal(false);
+  readonly defaultParamsFormModel = signal<Record<string, unknown>>({});
+  readonly defaultParamsValid = signal(true);
+  readonly savingDefaults = signal(false);
   trainingSeasonality = 'auto';
   trainingMinimumCycles = 3;
   trainingMadFloor = 0.000001;
@@ -1823,6 +2182,90 @@ export class OperatorCenterPage implements OnDestroy {
   currentDocumentVersion(document: AlgorithmDocument): AlgorithmDocumentVersion | null {
     return currentAlgorithmDocumentVersion(document);
   }
+  getParameterSpecs(version: OperatorVersionSummary): ParameterSpecItem[] {
+    return extractParameterSpecs(version);
+  }
+
+  formatParamValue(value: unknown): string {
+    if (value === null || value === undefined) return '未设定';
+    if (typeof value === 'boolean') return value ? '是 (true)' : '否 (false)';
+    if (typeof value === 'object') return JSON.stringify(value);
+    return String(value);
+  }
+
+  openEditDefaults(version: OperatorVersionSummary): void {
+    const currentDefaults =
+      version.default_parameters ||
+      (version.algorithm?.['default_params'] as Record<string, unknown>) ||
+      {};
+    this.defaultParamsFormModel.set(structuredClone(currentDefaults));
+    this.defaultParamsValid.set(true);
+    this.editingDefaults.set(true);
+  }
+
+  cancelEditDefaults(): void {
+    this.editingDefaults.set(false);
+  }
+
+  onDefaultParamsChange(updated: Record<string, unknown>): void {
+    this.defaultParamsFormModel.set(updated);
+  }
+
+  onDefaultParamsValidityChange(valid: boolean): void {
+    this.defaultParamsValid.set(valid);
+  }
+
+  asUiSchema(
+    uiSchema: Record<string, unknown> | undefined,
+  ): Record<string, Record<string, unknown>> {
+    return (uiSchema ?? {}) as Record<string, Record<string, unknown>>;
+  }
+
+  resetToSchemaDefaults(version: OperatorVersionSummary): void {
+    const schema = version.parameter_schema || {};
+    const properties = (schema['properties'] as Record<string, Record<string, unknown>>) || {};
+    const initial: Record<string, unknown> = {};
+    for (const [key, prop] of Object.entries(properties)) {
+      if (prop['default'] !== undefined) {
+        initial[key] = prop['default'];
+      }
+    }
+    this.defaultParamsFormModel.set(initial);
+    this.notice.success('已还原为 Schema 预设默认值，请点击保存生效。');
+  }
+
+  saveDefaultParameters(operator: OperatorSummary, version: OperatorVersionSummary): void {
+    if (!this.defaultParamsValid() || this.savingDefaults()) return;
+    this.savingDefaults.set(true);
+    const params = this.defaultParamsFormModel();
+
+    this.api
+      .patch<
+        { operator: OperatorSummary; version: OperatorVersionSummary },
+        { default_parameters: Record<string, unknown> }
+      >(
+        `/api/v1/operators/${operator.code}/versions/${version.version}/default-parameters`,
+        { default_parameters: params },
+      )
+      .subscribe({
+        next: (res) => {
+          this.savingDefaults.set(false);
+          this.editingDefaults.set(false);
+          this.notice.success(`算子 ${operator.name} (v${version.version}) 默认参数已成功更新！`);
+          if (res?.operator) {
+            this.selected.set(res.operator);
+          } else {
+            this.select(operator);
+          }
+        },
+        error: (err) => {
+          this.savingDefaults.set(false);
+          const detailMsg = err?.error?.detail?.message || err?.message || '未知错误';
+          this.notice.error(`更新默认参数失败: ${detailMsg}`);
+        },
+      });
+  }
+
   toggle(operator: OperatorSummary): void {
     const nextStatus = operator.status === 'active' ? 'disabled' : 'active';
     this.api
