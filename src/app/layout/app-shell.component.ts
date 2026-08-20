@@ -51,6 +51,9 @@ interface NavigationItem {
               >{{ item.label }}</a
             >
           }
+          <a mat-list-item href="https://schwarz-hal.github.io/smart-water-platform-docs/" target="_blank" rel="noopener noreferrer">
+            文档中心
+          </a>
         </mat-nav-list>
       </mat-sidenav>
       <mat-sidenav-content>
