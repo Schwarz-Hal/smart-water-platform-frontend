@@ -23,7 +23,7 @@ import { DataAssetSelection } from '../../core/models/api.models';
 
 export function linkedAlgorithmCode(operator: OperatorSummary): string | null {
   const value = operator.active_version?.algorithm?.['code'];
-  return typeof value === 'string' && value.trim() ? value : null;
+  return typeof value === 'string' && value.trim() ? value.trim() : null;
 }
 
 export function currentAlgorithmDocumentVersion(
@@ -773,23 +773,33 @@ export function extractParameterSpecs(version: OperatorVersionSummary): Paramete
               </div>
             }
             @if (activeTab() === 'documents') {
-              <div class="tab-body">
-                @if (documents().length === 0) {
-                  <p class="muted">该算子暂未发布文档。</p>
+              <div class="tab-body documents-tab-body">
+                @if (loadingDocuments()) {
+                  <p class="muted" style="padding: 16px 0;">正在加载算子文档…</p>
+                } @else if (documents().length === 0) {
+                  <div class="empty-docs-box">
+                    <p class="muted">该算子暂未发布文档。</p>
+                  </div>
                 }
                 @for (doc of documents(); track doc.document_id) {
-                  <h3>{{ doc.title }}</h3>
-                  @if (currentDocumentVersion(doc); as docVersion) {
-                    <p class="document-version">文档版本 {{ docVersion.version }}</p>
-                    @if (docVersion.markdown) {
-                      <article
-                        class="markdown"
-                        [innerHTML]="renderMarkdown(docVersion.markdown)"
-                      ></article>
-                    } @else {
-                      <p class="muted">该文档版本暂无可展示的 Markdown 内容。</p>
+                  <section class="doc-card">
+                    <div class="doc-card-header">
+                      <h3>{{ doc.title }}</h3>
+                      @if (currentDocumentVersion(doc); as docVersion) {
+                        <span class="doc-version-tag">文档版本 v{{ docVersion.version }}</span>
+                      }
+                    </div>
+                    @if (currentDocumentVersion(doc); as docVersion) {
+                      @if (docVersion.markdown) {
+                        <article
+                          class="markdown"
+                          [innerHTML]="renderMarkdown(docVersion.markdown)"
+                        ></article>
+                      } @else {
+                        <p class="muted">该文档版本暂无可展示的 Markdown 内容。</p>
+                      }
                     }
-                  }
+                  </section>
                 }
               </div>
             }
@@ -1722,6 +1732,156 @@ export function extractParameterSpecs(version: OperatorVersionSummary): Paramete
     .starter-card a {
       margin-top: auto;
     }
+    .documents-tab-body {
+      padding-top: 4px;
+    }
+    .doc-card {
+      margin-bottom: 24px;
+    }
+    .doc-card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 12px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid #eef1f5;
+    }
+    .doc-card-header h3 {
+      margin: 0;
+      font-size: 16px;
+      font-weight: 700;
+      color: #0f172a;
+    }
+    .doc-version-tag {
+      font-size: 11px;
+      font-weight: 600;
+      padding: 2px 8px;
+      background: #e0f2fe;
+      color: #0369a1;
+      border-radius: 999px;
+    }
+    .empty-docs-box {
+      padding: 24px;
+      text-align: center;
+      background: #f8fafc;
+      border: 1px dashed #cbd5e1;
+      border-radius: 10px;
+      margin: 12px 0;
+    }
+    .markdown {
+      line-height: 1.7;
+      color: #334155;
+      font-size: 14px;
+    }
+    .markdown h1 {
+      font-size: 20px;
+      font-weight: 800;
+      margin: 16px 0 12px;
+      color: #0f172a;
+      letter-spacing: -0.01em;
+    }
+    .markdown h2 {
+      font-size: 16px;
+      font-weight: 700;
+      margin: 18px 0 10px;
+      color: #1e293b;
+      padding-bottom: 6px;
+      border-bottom: 1px solid #f1f5f9;
+    }
+    .markdown h3 {
+      font-size: 14px;
+      font-weight: 600;
+      margin: 14px 0 8px;
+      color: #334155;
+    }
+    .markdown p {
+      margin: 8px 0;
+      line-height: 1.75;
+    }
+    .markdown ul,
+    .markdown ol {
+      padding-left: 20px;
+      margin: 8px 0;
+    }
+    .markdown li {
+      margin: 4px 0;
+    }
+    .markdown table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 14px 0;
+      font-size: 13px;
+      background: #ffffff;
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      overflow: hidden;
+    }
+    .markdown th {
+      background: #f8fafc;
+      font-weight: 600;
+      color: #1e293b;
+      text-align: left;
+      padding: 8px 12px;
+      border-bottom: 1px solid #e2e8f0;
+    }
+    .markdown td {
+      padding: 8px 12px;
+      border-bottom: 1px solid #f1f5f9;
+      color: #334155;
+      word-break: break-all;
+    }
+    .markdown tr:last-child td {
+      border-bottom: none;
+    }
+    .markdown tr:nth-child(even) {
+      background: #fafcff;
+    }
+    .markdown img {
+      max-width: 100%;
+      height: auto;
+      display: block;
+      margin: 16px auto;
+      border-radius: 10px;
+      border: 1px solid #e2e8f0;
+      background: #ffffff;
+      padding: 10px;
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.06);
+    }
+    .markdown code {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-size: 12px;
+      background: #f1f5f9;
+      color: #0369a1;
+      padding: 2px 6px;
+      border-radius: 4px;
+    }
+    .markdown pre {
+      background: #0f172a;
+      color: #f8fafc;
+      padding: 12px 16px;
+      border-radius: 8px;
+      overflow-x: auto;
+      font-size: 12px;
+      line-height: 1.5;
+      margin: 12px 0;
+    }
+    .markdown pre code {
+      background: transparent;
+      color: inherit;
+      padding: 0;
+    }
+    .markdown blockquote {
+      margin: 12px 0;
+      padding: 8px 14px;
+      border-left: 4px solid #0284c7;
+      background: #f0f9ff;
+      color: #0369a1;
+      border-radius: 0 6px 6px 0;
+    }
+    .markdown em {
+      color: #64748b;
+      font-size: 13px;
+    }
     @media (max-width: 900px) {
       .content-grid {
         grid-template-columns: 1fr;
@@ -1768,6 +1928,7 @@ export class OperatorCenterPage implements OnDestroy {
   readonly templates = signal<WorkflowTemplateSummary[]>([]);
   readonly selected = signal<OperatorSummary | null>(null);
   readonly documents = signal<AlgorithmDocument[]>([]);
+  readonly loadingDocuments = signal(false);
   readonly models = signal<ModelVersionSummary[]>([]);
   readonly loadingModels = signal(false);
   readonly selectedModelForDetail = signal<ModelVersionSummary | null>(null);
@@ -2095,11 +2256,19 @@ export class OperatorCenterPage implements OnDestroy {
     const code = this.algorithmCode(operator);
     if (!code || !this.auth.hasPermission('algorithm:read')) {
       this.documents.set([]);
+      this.loadingDocuments.set(false);
       return;
     }
+    this.loadingDocuments.set(true);
     this.api.get<AlgorithmDocument[]>(`/api/v1/algorithms/${code}/documents`).subscribe({
-      next: (documents) => this.documents.set(documents || []),
-      error: () => this.documents.set([]),
+      next: (documents) => {
+        this.documents.set(documents || []);
+        this.loadingDocuments.set(false);
+      },
+      error: () => {
+        this.documents.set([]);
+        this.loadingDocuments.set(false);
+      },
     });
   }
   startListResize(event: PointerEvent, layout: HTMLElement): void {
