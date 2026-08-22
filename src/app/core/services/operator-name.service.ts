@@ -36,6 +36,12 @@ export class OperatorNameService {
     s01_assessment_report_v1: 'S01 漏损评估报告',
     s01_assessment_v1: 'S01 漏损评估',
     candidate_table_v1: '漏损候选列表',
+    seasonal_robust_anomaly: '季节性鲁棒基线异常检测',
+    water_tf_joint_forecast: '水务非平稳时频协同预测',
+    water_probabilistic_forecast: '水务外生概率预测与风险评估',
+    water_adaptive_anomaly: '水务自适应多变量异常检测',
+    water_relation_anomaly: '水务形态-关系多证据异常检测',
+    water_feature_binding_v1: '水务特征与角色绑定',
   };
 
   displayName(code: string | null | undefined, fallback?: string | null): string {
