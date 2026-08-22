@@ -11,13 +11,18 @@ describe('algorithm document renderer', () => {
   });
 
   it('preserves code and safe documentation images', () => {
-    const html = renderAlgorithmDocumentHtml(
+    const html1 = renderAlgorithmDocumentHtml(
       '`cost = "$5"`\n\n![架构图](/assets/docs/chronos2-architecture.svg)',
     );
+    expect(html1).toContain('<code>cost = "$5"</code>');
+    expect(html1).toContain('data:image/svg+xml;utf8');
+    expect(html1).toContain('alt="架构图"');
 
-    expect(html).toContain('<code>cost = "$5"</code>');
-    expect(html).toContain('data:image/svg+xml;utf8');
-    expect(html).toContain('alt="架构图"');
+    const html2 = renderAlgorithmDocumentHtml(
+      '![架构图](../../static/api/v1/document-assets/chronos2-architecture.svg)',
+    );
+    expect(html2).toContain('data:image/svg+xml;utf8');
+    expect(html2).toContain('alt="架构图"');
   });
 
   it('removes executable html and unsafe urls', () => {
