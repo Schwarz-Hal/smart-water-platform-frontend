@@ -5,7 +5,12 @@ import { delay, of } from 'rxjs';
 import { ApiClient } from '../../core/services/api-client.service';
 import { NotificationService } from '../../core/services/notification.service';
 import { WorkflowEditorPage } from './workflow-editor.page';
-import { WorkflowEditorWorkspacePage } from './workflow-editor-workspace.page';
+import {
+  ROOT_CANVAS_PANEL_ID,
+  WorkflowEditorWorkspacePage,
+  isRootWorkflowDocumentPanelId,
+} from './workflow-editor-workspace.page';
+import { WorkflowDocumentTabComponent } from './workflow-document-tab.component';
 
 describe('WorkflowEditorPage', () => {
   let asyncApiResponses = false;
@@ -177,5 +182,29 @@ describe('WorkflowEditorPage', () => {
     expect(messageSlot).toBeTruthy();
     expect(messageSlot.textContent.trim()).toBe('');
     expect(workspaceBody).toBeTruthy();
+  });
+
+  it('uses a stable root document id and distinguishes composite document ids', () => {
+    expect(ROOT_CANVAS_PANEL_ID).toBe('canvas:root');
+    expect(ROOT_CANVAS_PANEL_ID).not.toBe('canvas');
+    expect(isRootWorkflowDocumentPanelId('canvas:root')).toBe(true);
+    expect(isRootWorkflowDocumentPanelId('canvas:root/composite:c1')).toBe(false);
+  });
+
+  it('does not render a close button for the root document tab', () => {
+    const fixture = TestBed.createComponent(WorkflowDocumentTabComponent);
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('.document-close')).toBeNull();
+
+    const compositeFixture = TestBed.createComponent(WorkflowDocumentTabComponent);
+    compositeFixture.componentInstance.params = {
+      kind: 'composite',
+      title: '复合算子 · C1',
+      closable: true,
+      path: 'root/c1',
+    };
+    compositeFixture.detectChanges();
+    expect(compositeFixture.nativeElement.querySelector('.document-close')).toBeTruthy();
   });
 });

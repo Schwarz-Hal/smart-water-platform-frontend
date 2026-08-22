@@ -38,9 +38,18 @@ import {
   parseWorkspacePreference,
   workspacePreferenceKey,
 } from './workflow-workspace-preferences';
+import {
+  WorkflowDocumentTabComponent,
+  WorkflowDocumentTabParams,
+} from './workflow-document-tab.component';
 
-type WorkspacePanelId = 'canvas' | 'catalog' | 'inspector';
-type OptionalWorkspacePanelId = Exclude<WorkspacePanelId, 'canvas'>;
+export const ROOT_CANVAS_PANEL_ID = 'canvas:root' as const;
+export function isRootWorkflowDocumentPanelId(id: string): boolean {
+  return id === ROOT_CANVAS_PANEL_ID;
+}
+
+type WorkspacePanelId = typeof ROOT_CANVAS_PANEL_ID | 'catalog' | 'inspector';
+type OptionalWorkspacePanelId = Exclude<WorkspacePanelId, typeof ROOT_CANVAS_PANEL_ID>;
 
 @Component({
   selector: 'app-workflow-editor-workspace-page',
@@ -152,6 +161,7 @@ type OptionalWorkspacePanelId = Exclude<WorkspacePanelId, 'canvas'>;
           <dv-dockview
             class="dockview-host"
             [components]="components"
+            [tabComponents]="tabComponents"
             [theme]="dockviewTheme()"
             [floatingGroupBounds]="'boundedWithinViewport'"
             (ready)="onDockviewReady($event)"
@@ -405,8 +415,10 @@ export class WorkflowEditorWorkspacePage extends WorkflowEditorPage implements O
   private readonly workspaceAuth = inject(AuthService);
   private dockviewApi?: DockviewApi;
   private layoutSubscription?: { dispose(): void };
+  private panelRemovalSubscription?: { dispose(): void };
   private restoringLayout = false;
   private workspaceInitialized = false;
+  private rootRecoveryScheduled = false;
   private initializationFrame?: number;
   private readonly guideStorageKey = 'smart-water.workflow.onboarding.dismissed';
   readonly guideDismissed = signal(this.readGuideDismissed());
@@ -424,6 +436,9 @@ export class WorkflowEditorWorkspacePage extends WorkflowEditorPage implements O
     canvas: WorkflowCanvasPanelComponent,
     catalog: OperatorCatalogPanelComponent,
     inspector: NodeInspectorPanelComponent,
+  };
+  readonly tabComponents = {
+    documentTab: WorkflowDocumentTabComponent,
   };
   private readGuideDismissed(): boolean {
     try {
@@ -457,9 +472,19 @@ export class WorkflowEditorWorkspacePage extends WorkflowEditorPage implements O
     this.dockviewApi = event.api;
     window.localStorage.removeItem(legacyWorkspacePreferenceKey(this.workspaceAuth.user()?.id));
     this.layoutSubscription?.dispose();
+    this.panelRemovalSubscription?.dispose();
     this.layoutSubscription = event.api.onDidLayoutChange(() => {
       this.syncOpenPanels();
       if (!this.restoringLayout) this.saveWorkspaceLayout();
+    });
+    this.panelRemovalSubscription = event.api.onDidRemovePanel((panel) => {
+      if (
+        isRootWorkflowDocumentPanelId(panel.id) &&
+        this.workspaceInitialized &&
+        !this.restoringLayout
+      ) {
+        this.scheduleRootCanvasRecovery();
+      }
     });
     this.scheduleWorkspaceInitialization();
   }
@@ -516,6 +541,7 @@ export class WorkflowEditorWorkspacePage extends WorkflowEditorPage implements O
   override ngOnDestroy(): void {
     if (this.initializationFrame !== undefined) cancelAnimationFrame(this.initializationFrame);
     this.layoutSubscription?.dispose();
+    this.panelRemovalSubscription?.dispose();
     this.bridge.host = undefined;
     super.ngOnDestroy();
   }
@@ -527,12 +553,7 @@ export class WorkflowEditorWorkspacePage extends WorkflowEditorPage implements O
 
   private createDefaultLayout(): void {
     if (!this.dockviewApi) return;
-    const canvas = this.dockviewApi.addPanel({
-      id: 'canvas',
-      component: 'canvas',
-      title: '工作流画布',
-      renderer: 'always',
-    });
+    const canvas = this.addRootCanvasPanel();
     this.dockviewApi.addPanel({
       id: 'catalog',
       component: 'catalog',
@@ -553,7 +574,7 @@ export class WorkflowEditorWorkspacePage extends WorkflowEditorPage implements O
 
   private addSidePanel(panelId: OptionalWorkspacePanelId): void {
     if (!this.dockviewApi) return;
-    const canvas = this.dockviewApi.getPanel('canvas');
+    const canvas = this.dockviewApi.getPanel(ROOT_CANVAS_PANEL_ID);
     if (!canvas) return;
     const title = panelId === 'catalog' ? '算子目录' : '节点属性';
     const panel = this.dockviewApi.addPanel({
@@ -613,13 +634,53 @@ export class WorkflowEditorWorkspacePage extends WorkflowEditorPage implements O
       this.darkWorkspace.set(preference.theme === 'workspace-dark');
       this.dockviewTheme.set(this.darkWorkspace() ? themeDark : themeLight);
       window.localStorage.removeItem('smart-water.workflow-editor.docks');
-      return Boolean(this.dockviewApi.getPanel('canvas'));
+      return Boolean(this.dockviewApi.getPanel(ROOT_CANVAS_PANEL_ID));
     } catch {
       window.localStorage.removeItem(this.preferenceKey());
       return false;
     } finally {
       this.restoringLayout = false;
     }
+  }
+
+  private addRootCanvasPanel() {
+    if (!this.dockviewApi) throw new Error('Dockview is not ready');
+    return this.dockviewApi.addPanel({
+      id: ROOT_CANVAS_PANEL_ID,
+      component: 'canvas',
+      tabComponent: 'documentTab',
+      title: '工作流画布',
+      params: {
+        kind: 'root',
+        title: '工作流画布',
+        closable: false,
+      } satisfies WorkflowDocumentTabParams,
+      renderer: 'always',
+    });
+  }
+
+  private scheduleRootCanvasRecovery(): void {
+    if (this.rootRecoveryScheduled || !this.dockviewApi) return;
+    this.rootRecoveryScheduled = true;
+    queueMicrotask(() => {
+      this.rootRecoveryScheduled = false;
+      if (
+        !this.dockviewApi ||
+        this.restoringLayout ||
+        this.dockviewApi.getPanel(ROOT_CANVAS_PANEL_ID)
+      ) {
+        return;
+      }
+      try {
+        const canvas = this.addRootCanvasPanel();
+        canvas.api.setActive();
+        this.syncOpenPanels();
+        this.layoutWorkspace();
+        this.saveWorkspaceLayout();
+      } catch {
+        // A transient Dockview layout error is retried by the next layout event.
+      }
+    });
   }
 
   private restoreThemePreference(): void {
