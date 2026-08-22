@@ -88,22 +88,14 @@ type OptionalWorkspacePanelId = Exclude<WorkspacePanelId, typeof ROOT_CANVAS_PAN
           {{ autosaveLabel() }}
         </div>
         <div class="actions">
-          <button mat-stroked-button (click)="validate()" [disabled]="busy() || !parametersValid()">
-            校验图
+          <button mat-stroked-button (click)="validate()" [disabled]="busy()">
+            {{ validationButtonLabel() }}
           </button>
           <button mat-flat-button (click)="save()" [disabled]="busy()">保存草稿</button>
-          <button
-            mat-flat-button
-            (click)="publish()"
-            [disabled]="busy() || !workflowId() || !parametersValid()"
-          >
+          <button mat-flat-button (click)="publish()" [disabled]="busy() || !workflowId()">
             发布版本
           </button>
-          <button
-            mat-flat-button
-            (click)="run()"
-            [disabled]="busy() || !publishedVersionId() || !bindingsReady() || !parametersValid()"
-          >
+          <button mat-flat-button (click)="run()" [disabled]="busy() || !publishedVersionId()">
             运行已发布版本
           </button>
           <button mat-stroked-button (click)="toggleWorkspaceTheme()">

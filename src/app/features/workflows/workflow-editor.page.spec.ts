@@ -14,9 +14,17 @@ import { WorkflowDocumentTabComponent } from './workflow-document-tab.component'
 
 describe('WorkflowEditorPage', () => {
   let asyncApiResponses = false;
+  let apiRequests: Array<{ method: string; path: string; body: unknown }> = [];
+  let draftResponse: Record<string, unknown> = {};
+  let publishResponse: Record<string, unknown> = { id: 20, version: 3 };
+  let runResponse: Record<string, unknown> = {};
 
   beforeEach(async () => {
     asyncApiResponses = false;
+    apiRequests = [];
+    draftResponse = {};
+    publishResponse = { id: 20, version: 3 };
+    runResponse = {};
     const api = {
       get: <T>(path: string) => {
         const respond = (value: T) => (asyncApiResponses ? of(value).pipe(delay(0)) : of(value));
@@ -84,8 +92,16 @@ describe('WorkflowEditorPage', () => {
           },
         } as T);
       },
-      post: <T>() => of({} as T),
-      put: <T>() => of({} as T),
+      post: <T>(path: string, body: unknown) => {
+        apiRequests.push({ method: 'POST', path, body });
+        if (path.endsWith('/publish')) return of(publishResponse as T);
+        if (path.includes('/runs')) return of(runResponse as T);
+        return of({} as T);
+      },
+      put: <T>(path: string, body: unknown) => {
+        apiRequests.push({ method: 'PUT', path, body });
+        return of(draftResponse as T);
+      },
     };
     await TestBed.configureTestingModule({
       imports: [WorkflowEditorPage, WorkflowEditorWorkspacePage],
@@ -131,6 +147,77 @@ describe('WorkflowEditorPage', () => {
     const page = TestBed.createComponent(WorkflowEditorPage).componentInstance;
 
     expect(page.publishedVersionId()).toBe(12);
+    expect(page.publishedVersionNumber()).toBe(2);
+  });
+
+  it('shows the last saved validation result without issuing a validation request', () => {
+    const page = TestBed.createComponent(WorkflowEditorPage).componentInstance;
+
+    page.validate();
+
+    expect(apiRequests.some((request) => request.path.endsWith('/validate'))).toBe(false);
+    expect(page.message()).toContain('保存草稿后将自动校验');
+    expect(page.validationButtonLabel()).toBe('尚无记录');
+  });
+
+  it('keeps a successfully saved draft saved when validation reports issues', () => {
+    draftResponse = {
+      draft_revision: 2,
+      draft_validation_status: 'invalid',
+      draft_validation_revision: 2,
+      draft_validation_issues: [{ code: 'MISSING_INPUT', message: '缺少输入' }],
+    };
+    const page = TestBed.createComponent(WorkflowEditorPage).componentInstance;
+
+    page.save();
+
+    expect(page.autosaveState()).toBe('saved');
+    expect(page.validationStatus()).toBe('invalid');
+    expect(page.message()).toContain('发现 1 个校验问题');
+  });
+
+  it('saves a dirty draft before publishing and only publishes a valid result', () => {
+    draftResponse = { draft_revision: 2, draft_validation_status: 'valid' };
+    const page = TestBed.createComponent(WorkflowEditorPage).componentInstance;
+    page.setParameter('source', 'example', 1);
+
+    page.publish();
+
+    expect(apiRequests.map((request) => `${request.method} ${request.path}`)).toEqual([
+      'PUT /api/v1/workflows/1/draft',
+      'POST /api/v1/workflows/1/publish',
+    ]);
+    expect(page.draftMatchesPublished()).toBe(true);
+    expect(page.publishedVersionId()).toBe(20);
+    expect(page.publishedVersionNumber()).toBe(3);
+  });
+
+  it('does not publish after a saved draft fails validation', () => {
+    draftResponse = {
+      draft_revision: 2,
+      draft_validation_status: 'invalid',
+      draft_validation_issues: [{ code: 'BAD_GRAPH', message: '图结构无效' }],
+    };
+    const page = TestBed.createComponent(WorkflowEditorPage).componentInstance;
+    page.setParameter('source', 'example', 1);
+
+    page.publish();
+
+    expect(apiRequests.map((request) => request.method)).toEqual(['PUT']);
+    expect(page.draftMatchesPublished()).toBe(false);
+  });
+
+  it('confirms before running an unpublished draft and runs the exact published version', () => {
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true);
+    const page = TestBed.createComponent(WorkflowEditorPage).componentInstance;
+
+    page.run();
+
+    const runRequest = apiRequests.find((request) => request.path.includes('/runs'));
+    expect(confirm).toHaveBeenCalled();
+    expect(runRequest?.path).toBe('/api/v1/workflow-versions/12/runs');
+    expect(runRequest?.body).toEqual({ input_bindings: {}, parameter_overrides: {} });
+    confirm.mockRestore();
   });
 
   it('drops connections whose node or port is no longer available', () => {
