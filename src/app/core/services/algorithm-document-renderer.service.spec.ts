@@ -16,7 +16,8 @@ describe('algorithm document renderer', () => {
     );
 
     expect(html).toContain('<code>cost = "$5"</code>');
-    expect(html).toContain('/assets/docs/chronos2-architecture.svg');
+    expect(html).toContain('data:image/svg+xml;utf8');
+    expect(html).toContain('alt="架构图"');
   });
 
   it('removes executable html and unsafe urls', () => {
