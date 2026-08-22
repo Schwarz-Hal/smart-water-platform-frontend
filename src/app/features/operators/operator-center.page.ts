@@ -1780,19 +1780,19 @@ export function extractParameterSpecs(version: OperatorVersionSummary): Paramete
       border-radius: 10px;
       margin: 12px 0;
     }
-    .markdown {
-      line-height: 1.7;
+    :host ::ng-deep .markdown {
+      line-height: 1.75;
       color: #334155;
       font-size: 14px;
     }
-    .markdown h1 {
+    :host ::ng-deep .markdown h1 {
       font-size: 20px;
       font-weight: 800;
-      margin: 16px 0 12px;
+      margin: 20px 0 12px;
       color: #0f172a;
       letter-spacing: -0.01em;
     }
-    .markdown h2 {
+    :host ::ng-deep .markdown h2 {
       font-size: 16px;
       font-weight: 700;
       margin: 18px 0 10px;
@@ -1800,66 +1800,82 @@ export function extractParameterSpecs(version: OperatorVersionSummary): Paramete
       padding-bottom: 6px;
       border-bottom: 1px solid #f1f5f9;
     }
-    .markdown h3 {
+    :host ::ng-deep .markdown h3 {
       font-size: 14px;
       font-weight: 600;
       margin: 14px 0 8px;
       color: #334155;
     }
-    .markdown p {
-      margin: 8px 0;
+    :host ::ng-deep .markdown p {
+      margin: 10px 0;
       line-height: 1.75;
     }
-    .markdown ul,
-    .markdown ol {
-      padding-left: 20px;
-      margin: 8px 0;
+    :host ::ng-deep .markdown ul,
+    :host ::ng-deep .markdown ol {
+      padding-left: 22px;
+      margin: 10px 0;
     }
-    .markdown li {
-      margin: 4px 0;
+    :host ::ng-deep .markdown li {
+      margin: 5px 0;
+      line-height: 1.65;
     }
-    .markdown table {
+    :host ::ng-deep .markdown table {
       width: 100%;
-      border-collapse: collapse;
-      margin: 14px 0;
+      border-collapse: separate;
+      border-spacing: 0;
+      margin: 18px 0;
       font-size: 13px;
       background: #ffffff;
-      border: 1px solid #e2e8f0;
+      border: 1px solid #cbd5e1;
       border-radius: 8px;
       overflow: hidden;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
     }
-    .markdown th {
+    :host ::ng-deep .markdown th {
       background: #f8fafc;
-      font-weight: 600;
+      font-weight: 700;
       color: #1e293b;
       text-align: left;
-      padding: 8px 12px;
+      padding: 10px 14px;
+      border-bottom: 1px solid #cbd5e1;
+      border-right: 1px solid #e2e8f0;
+      white-space: nowrap;
+    }
+    :host ::ng-deep .markdown th:last-child {
+      border-right: none;
+    }
+    :host ::ng-deep .markdown td {
+      padding: 10px 14px;
       border-bottom: 1px solid #e2e8f0;
-    }
-    .markdown td {
-      padding: 8px 12px;
-      border-bottom: 1px solid #f1f5f9;
+      border-right: 1px solid #f1f5f9;
       color: #334155;
-      word-break: break-all;
+      line-height: 1.6;
+      word-break: break-word;
     }
-    .markdown tr:last-child td {
+    :host ::ng-deep .markdown td:last-child {
+      border-right: none;
+    }
+    :host ::ng-deep .markdown tr:last-child td {
       border-bottom: none;
     }
-    .markdown tr:nth-child(even) {
+    :host ::ng-deep .markdown tr:nth-child(even) td {
       background: #fafcff;
     }
-    .markdown img {
+    :host ::ng-deep .markdown tr:hover td {
+      background: #f1f5f9;
+    }
+    :host ::ng-deep .markdown img {
       max-width: 100%;
       height: auto;
       display: block;
-      margin: 16px auto;
+      margin: 20px auto;
       border-radius: 10px;
       border: 1px solid #e2e8f0;
       background: #ffffff;
-      padding: 10px;
-      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.06);
+      padding: 12px;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.06);
     }
-    .markdown code {
+    :host ::ng-deep .markdown code {
       font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
       font-size: 12px;
       background: #f1f5f9;
@@ -1867,30 +1883,31 @@ export function extractParameterSpecs(version: OperatorVersionSummary): Paramete
       padding: 2px 6px;
       border-radius: 4px;
     }
-    .markdown pre {
+    :host ::ng-deep .markdown pre {
       background: #0f172a;
       color: #f8fafc;
-      padding: 12px 16px;
+      padding: 14px 18px;
       border-radius: 8px;
       overflow-x: auto;
       font-size: 12px;
       line-height: 1.5;
-      margin: 12px 0;
+      margin: 14px 0;
     }
-    .markdown pre code {
+    :host ::ng-deep .markdown pre code {
       background: transparent;
       color: inherit;
       padding: 0;
     }
-    .markdown blockquote {
-      margin: 12px 0;
-      padding: 8px 14px;
+    :host ::ng-deep .markdown blockquote {
+      margin: 14px 0;
+      padding: 10px 16px;
       border-left: 4px solid #0284c7;
       background: #f0f9ff;
       color: #0369a1;
       border-radius: 0 6px 6px 0;
+      line-height: 1.65;
     }
-    .markdown em {
+    :host ::ng-deep .markdown em {
       color: #64748b;
       font-size: 13px;
     }
