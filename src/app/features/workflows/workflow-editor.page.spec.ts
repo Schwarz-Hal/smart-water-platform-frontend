@@ -418,5 +418,6 @@ describe('WorkflowEditorPage', () => {
     await new Promise((resolve) => setTimeout(resolve, 10));
 
     expect((addedPanels[0]?.['params'] as Record<string, unknown>)?.['workflowVersionId']).toBe(42);
+    fixture.destroy();
   });
 });

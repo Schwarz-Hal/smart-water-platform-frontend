@@ -8,6 +8,7 @@ import {
   signal,
 } from '@angular/core';
 import { MatButtonModule } from '@angular/material/button';
+import { MatDialog, MatDialogModule } from '@angular/material/dialog';
 import { MatMenuModule } from '@angular/material/menu';
 import { provideFormlyCore } from '@ngx-formly/core';
 import { withFormlyMaterial } from '@ngx-formly/material';
@@ -22,6 +23,7 @@ import {
 
 import { AuthService } from '../../core/services/auth.service';
 import { ApiClient } from '../../core/services/api-client.service';
+import { NotificationService } from '../../core/services/notification.service';
 import {
   FormlyJsonFieldTypeComponent,
   FormlySliderFieldTypeComponent,
@@ -34,6 +36,10 @@ import {
   WorkflowEditorPanelBridge,
 } from './workflow-editor-panels';
 import { WorkflowCompositeCanvasPanelComponent } from './workflow-composite-canvas-panel.component';
+import {
+  WorkflowCompositeRegistrationDialogComponent,
+  WorkflowCompositeRegistrationResult,
+} from './workflow-composite-registration-dialog.component';
 import {
   WorkspaceLayoutPreference,
   legacyWorkspacePreferenceKey,
@@ -58,6 +64,7 @@ type OptionalWorkspacePanelId = Exclude<WorkspacePanelId, typeof ROOT_CANVAS_PAN
   imports: [
     DockviewAngularModule,
     MatButtonModule,
+    MatDialogModule,
     MatMenuModule,
     OperatorCatalogPanelComponent,
     NodeInspectorPanelComponent,
@@ -96,6 +103,14 @@ type OptionalWorkspacePanelId = Exclude<WorkspacePanelId, typeof ROOT_CANVAS_PAN
           <button mat-flat-button (click)="save()" [disabled]="busy()">保存草稿</button>
           <button mat-flat-button (click)="publish()" [disabled]="busy() || !workflowId()">
             发布版本
+          </button>
+          <button
+            mat-stroked-button
+            type="button"
+            (click)="registerCompositeOperator()"
+            [disabled]="busy() || !publishedVersionId()"
+          >
+            注册为复合算子
           </button>
           <button mat-flat-button (click)="run()" [disabled]="busy() || !publishedVersionId()">
             运行已发布版本
@@ -408,6 +423,8 @@ export class WorkflowEditorWorkspacePage extends WorkflowEditorPage implements O
   private readonly bridge = inject(WorkflowEditorPanelBridge);
   private readonly workspaceAuth = inject(AuthService);
   private readonly workspaceApi = inject(ApiClient);
+  private readonly dialog = inject(MatDialog);
+  private readonly workspaceNotice = inject(NotificationService);
   private readonly exactCompositeVersions = new Map<
     string,
     { executorType: string; workflowVersionId: number | null }
@@ -550,6 +567,29 @@ export class WorkflowEditorWorkspacePage extends WorkflowEditorPage implements O
   override loadGraph(graph: Graph): void {
     super.loadGraph(graph);
     this.scheduleWorkspaceInitialization();
+  }
+
+  registerCompositeOperator(): void {
+    const workflowVersionId = this.publishedVersionId();
+    if (!workflowVersionId || this.busy()) return;
+
+    const dialogRef = this.dialog.open(WorkflowCompositeRegistrationDialogComponent, {
+      width: 'min(920px, 96vw)',
+      maxWidth: '96vw',
+      data: {
+        workflowVersionId,
+        workflowVersionNumber: this.publishedVersionNumber(),
+        workflowName: this.workflowName(),
+        draftDirty: this.autosaveState() !== 'saved' || !this.draftMatchesPublished(),
+      },
+    });
+    dialogRef.afterClosed().subscribe((result: WorkflowCompositeRegistrationResult | undefined) => {
+      if (!result?.registered) return;
+      const text = `复合算子“${result.nodeName}”已注册（${result.nodeCode}@${result.nodeVersion}）。`;
+      this.messageType.set('info');
+      this.message.set(text);
+      this.workspaceNotice.success(text);
+    });
   }
 
   override openCompositeNodeDocument(nodeId: string): void {
