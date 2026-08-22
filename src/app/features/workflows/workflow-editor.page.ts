@@ -48,6 +48,9 @@ export interface Definition {
   ui_schema?: Record<string, Record<string, unknown>>;
   default_params?: Record<string, unknown>;
   algorithm?: Record<string, unknown> | null;
+  executor_type?: string;
+  composite_workflow_version_id?: number | null;
+  composite_interface?: Record<string, unknown> | null;
 }
 export interface EditorNode {
   id: string;
@@ -72,6 +75,13 @@ interface StoredBinding {
   start?: string | null;
   end?: string | null;
 }
+export interface ValidationIssue {
+  code: string;
+  message: string;
+  node_id?: string;
+  path?: string;
+}
+export type ValidationStatus = 'not_validated' | 'valid' | 'invalid';
 export interface Graph {
   contract_version: string;
   nodes: Record<string, unknown>[];
@@ -106,11 +116,16 @@ export class WorkflowEditorPage implements AfterViewInit, OnDestroy {
   readonly workflowId = signal<number | null>(null);
   readonly workflowName = signal('工作流编辑器');
   readonly publishedVersionId = signal<number | null>(null);
+  readonly publishedVersionNumber = signal<number | null>(null);
+  readonly draftMatchesPublished = signal(false);
   readonly draftRevision = signal(1);
   readonly busy = signal(false);
   readonly message = signal('');
   readonly messageType = signal<'info' | 'error'>('info');
   readonly autosaveState = signal<'saved' | 'dirty' | 'saving' | 'offline' | 'conflict'>('saved');
+  readonly validationStatus = signal<ValidationStatus>('not_validated');
+  readonly validationIssues = signal<ValidationIssue[]>([]);
+  readonly validationRevision = signal<number | null>(null);
   private autosaveTimer: ReturnType<typeof setTimeout> | undefined;
   private readonly beforeUnload = (event: BeforeUnloadEvent) => {
     if (
@@ -135,6 +150,8 @@ export class WorkflowEditorPage implements AfterViewInit, OnDestroy {
   private resizeObserver?: ResizeObserver;
   private reteNodes = new Map<string, any>();
   private definitionByCode = new Map<string, Definition>();
+  private lastPickedReteNodeId: string | null = null;
+  private lastPickedAt = 0;
   private hydratingRete = false;
   private suppressReteSync = false;
   private subscriptions: Subscription[] = [];
@@ -194,6 +211,10 @@ export class WorkflowEditorPage implements AfterViewInit, OnDestroy {
               this.draftRevision.set(Number(workflow['draft_revision'] || 1));
               const baseVersionId = Number(workflow['draft_base_version_id']);
               this.publishedVersionId.set(Number.isInteger(baseVersionId) ? baseVersionId : null);
+              this.draftMatchesPublished.set(
+                String(workflow['status'] || '') === 'published' && Number.isInteger(baseVersionId),
+              );
+              this.applyValidationResult(workflow);
               this.loadGraph(workflow['draft_graph'] as Graph);
               this.restoreLatestPublishedVersion(Number(workflowId));
               this.checkRecovery(workflow);
@@ -216,8 +237,12 @@ export class WorkflowEditorPage implements AfterViewInit, OnDestroy {
             .filter((version) => version.status === 'published' || version.status === 'validated')
             .sort((left, right) => right.version - left.version)[0];
           this.publishedVersionId.set(latest?.id ?? null);
+          this.publishedVersionNumber.set(latest?.version ?? null);
         },
-        error: () => this.publishedVersionId.set(null),
+        error: () => {
+          this.publishedVersionId.set(null);
+          this.publishedVersionNumber.set(null);
+        },
       });
   }
   private operatorDefinition(item: OperatorSummary): Definition | null {
@@ -239,7 +264,47 @@ export class WorkflowEditorPage implements AfterViewInit, OnDestroy {
           'default_params'
         ] as Record<string, unknown> | undefined) ||
         (version.algorithm?.['default_params'] as Record<string, unknown> | undefined),
+      executor_type: String((version as unknown as Record<string, unknown>)['executor_type'] || ''),
+      composite_workflow_version_id: Number.isInteger(
+        Number((version as unknown as Record<string, unknown>)['composite_workflow_version_id']),
+      )
+        ? Number((version as unknown as Record<string, unknown>)['composite_workflow_version_id'])
+        : null,
+      composite_interface:
+        ((version as unknown as Record<string, unknown>)['composite_interface'] as
+          Record<string, unknown> | null | undefined) ?? null,
     };
+  }
+
+  /** Hook for workspace hosts; the base page intentionally has no document host. */
+  protected openCompositeNodeDocument(_nodeId: string): void {
+    // The plain editor page has no document workspace. The Dockview host overrides this hook.
+  }
+
+  /** Handle Rete's nodepicked event without changing ordinary single-click behaviour. */
+  protected handleReteNodePicked(nodeId: string, pickedAt = Date.now()): void {
+    const id = this.backendIdForRete(nodeId) || nodeId;
+    this.selectedId.set(id);
+    const isDoublePick =
+      this.lastPickedReteNodeId === nodeId &&
+      pickedAt - this.lastPickedAt >= 0 &&
+      pickedAt - this.lastPickedAt <= 350;
+    this.lastPickedReteNodeId = isDoublePick ? null : nodeId;
+    this.lastPickedAt = isDoublePick ? 0 : pickedAt;
+    if (isDoublePick) {
+      const node = this.nodes().find((item) => item.id === id);
+      if (node?.definition && this.isCompositeDefinition(node.definition)) {
+        this.openCompositeNodeDocument(id);
+      }
+    }
+  }
+
+  private isCompositeDefinition(definition: Definition): boolean {
+    return (
+      definition.executor_type === 'composite_workflow' ||
+      (Number.isInteger(definition.composite_workflow_version_id) &&
+        Number(definition.composite_workflow_version_id) > 0)
+    );
   }
   ngAfterViewInit(): void {
     this.observeResize();
@@ -283,6 +348,22 @@ export class WorkflowEditorPage implements AfterViewInit, OnDestroy {
     const loadedNodes = (graph.nodes || []).map((raw, index) => {
       const ui = (raw['ui'] || {}) as Record<string, unknown>;
       const position = (ui['position'] || {}) as Record<string, unknown>;
+      const catalogDefinition = this.definitionByCode.get(String(raw['node_code']));
+      const definition = catalogDefinition
+        ? {
+            ...catalogDefinition,
+            executor_type:
+              (raw['executor_type'] as string | undefined) ?? catalogDefinition.executor_type,
+            composite_workflow_version_id: Number.isInteger(
+              Number(raw['composite_workflow_version_id']),
+            )
+              ? Number(raw['composite_workflow_version_id'])
+              : catalogDefinition.composite_workflow_version_id,
+            composite_interface:
+              (raw['composite_interface'] as Record<string, unknown> | null | undefined) ??
+              catalogDefinition.composite_interface,
+          }
+        : undefined;
       return {
         id: String(raw['id']),
         node_code: String(raw['node_code']),
@@ -291,7 +372,7 @@ export class WorkflowEditorPage implements AfterViewInit, OnDestroy {
         x: Number(position['x'] ?? 34 + (index % 2) * 285),
         y: Number(position['y'] ?? 30 + Math.floor(index / 2) * 145),
         collapsed: Boolean(ui['collapsed'] ?? false),
-        definition: this.definitionByCode.get(String(raw['node_code'])),
+        definition,
       };
     });
     this.nodes.set(loadedNodes);
@@ -424,10 +505,7 @@ export class WorkflowEditorPage implements AfterViewInit, OnDestroy {
       return context;
     });
     this.reteArea.addPipe((context: any) => {
-      if (context.type === 'nodepicked') {
-        const id = this.backendIdForRete(context.data.id);
-        if (id) this.selectedId.set(id);
-      }
+      if (context.type === 'nodepicked') this.handleReteNodePicked(String(context.data.id));
       if (
         !this.hydratingRete &&
         (context.type === 'nodetranslated' || context.type === 'nodetranslate')
@@ -774,29 +852,60 @@ export class WorkflowEditorPage implements AfterViewInit, OnDestroy {
       value_source: binding.value_source ?? 'processed',
     } as unknown as DataAssetSelection;
   }
+  private applyValidationResult(result: Record<string, unknown>): void {
+    const rawStatus = result['draft_validation_status'];
+    const status: ValidationStatus =
+      rawStatus === 'valid' || rawStatus === 'invalid' ? rawStatus : 'not_validated';
+    const rawIssues = Array.isArray(result['draft_validation_issues'])
+      ? result['draft_validation_issues']
+      : [];
+    const issues = rawIssues
+      .filter((issue): issue is Record<string, unknown> =>
+        Boolean(issue && typeof issue === 'object'),
+      )
+      .map((issue) => ({
+        code: String(issue['code'] || 'WORKFLOW_VALIDATION_ERROR'),
+        message: String(issue['message'] || issue['code'] || '图校验未通过'),
+        ...(issue['node_id'] ? { node_id: String(issue['node_id']) } : {}),
+        ...(issue['path'] ? { path: String(issue['path']) } : {}),
+      }));
+    this.validationStatus.set(status);
+    this.validationIssues.set(issues);
+    const revision = Number(result['draft_validation_revision']);
+    this.validationRevision.set(Number.isInteger(revision) ? revision : null);
+  }
   validate(): void {
-    if (!this.workflowId()) {
-      this.showError('请先保存草稿，再由后端校验图结构。');
+    if (this.validationStatus() === 'valid') {
+      this.show('最近一次保存的草稿已通过校验。');
       return;
     }
-    this.busy.set(true);
-    this.api
-      .post<{ valid: boolean; errors: string[] }, object>(
-        `/api/v1/workflows/${this.workflowId()}/validate`,
-        {},
-      )
-      .subscribe({
-        next: (result) => {
-          this.busy.set(false);
-          result.valid ? this.show('图校验通过。') : this.showError(result.errors.join('；'));
-        },
-        error: (error: any) => {
-          this.busy.set(false);
-          this.showError(this.formatWorkflowError(error, '图校验请求失败。'));
-        },
-      });
+    if (this.validationStatus() === 'invalid') {
+      const issues = this.validationIssues();
+      this.showError(
+        issues.length
+          ? `最近一次保存发现 ${issues.length} 个校验问题：${issues
+              .slice(0, 3)
+              .map((issue) => issue.message || issue.code)
+              .join('；')}`
+          : '最近一次保存未通过校验。',
+      );
+      return;
+    }
+    this.show('保存草稿后将自动校验。');
+  }
+  validationButtonLabel(): string {
+    if (this.autosaveState() === 'dirty') return '待保存校验';
+    if (this.validationStatus() === 'valid') return '校验通过';
+    if (this.validationStatus() === 'invalid') {
+      return `校验未通过 · ${this.validationIssues().length}`;
+    }
+    return '尚无记录';
   }
   save(): void {
+    this.saveDraft();
+  }
+  private saveDraft(after?: (result: Record<string, unknown>) => void): void {
+    if (this.busy()) return;
     this.busy.set(true);
     const body = {
       workflow_code: `workflow_${Date.now()}`,
@@ -816,11 +925,19 @@ export class WorkflowEditorPage implements AfterViewInit, OnDestroy {
         this.busy.set(false);
         this.workflowId.set(Number(result['id'] || this.workflowId()));
         this.draftRevision.set(Number(result['draft_revision'] || this.draftRevision()));
+        this.applyValidationResult(result);
         this.autosaveState.set('saved');
         const userId = this.auth.user()?.id;
         const id = this.workflowId();
         if (userId && id) void this.workflowCache.remove(userId, id);
-        this.show('草稿已保存。');
+        if (this.validationStatus() === 'valid') {
+          this.show('草稿已保存，校验通过。');
+        } else if (this.validationStatus() === 'invalid') {
+          this.showError(`草稿已保存，发现 ${this.validationIssues().length} 个校验问题。`);
+        } else {
+          this.show('草稿已保存，等待校验状态。');
+        }
+        after?.(result);
       },
       error: (error: any) => {
         this.busy.set(false);
@@ -832,14 +949,49 @@ export class WorkflowEditorPage implements AfterViewInit, OnDestroy {
     });
   }
   publish(): void {
+    if (!this.workflowId()) {
+      this.showError('请先保存草稿。');
+      return;
+    }
+    if (!this.parametersValid()) {
+      this.showError('存在参数错误，请修正后再发布。');
+      return;
+    }
+    if (this.busy()) return;
+    const state = this.autosaveState();
+    if (state === 'saving' || state === 'offline' || state === 'conflict') {
+      this.showError('当前草稿仍在保存、离线或存在冲突，暂不能发布。');
+      return;
+    }
+    if (state === 'dirty') {
+      this.saveDraft(() => {
+        if (this.validationStatus() === 'valid') this.publishVersion();
+        else this.showError('草稿已保存，但未通过校验，暂不能发布。');
+      });
+      return;
+    }
+    if (this.validationStatus() !== 'valid') {
+      this.showError('请先保存草稿并通过校验后再发布。');
+      return;
+    }
+    this.publishVersion();
+  }
+  private publishVersion(): void {
+    if (!this.workflowId() || this.busy()) return;
     this.busy.set(true);
     this.api
       .post<{ id: number }, object>(`/api/v1/workflows/${this.workflowId()}/publish`, {})
       .subscribe({
         next: (version) => {
           this.busy.set(false);
-          this.publishedVersionId.set(version.id);
-          this.show(`已发布版本 #${version.id}。`);
+          const rawVersion = version as unknown as Record<string, unknown>;
+          const versionId = Number(rawVersion['id'] ?? rawVersion['version_id']);
+          const versionNumber = Number(rawVersion['version'] ?? rawVersion['version_number']);
+          this.publishedVersionId.set(Number.isInteger(versionId) ? versionId : null);
+          this.publishedVersionNumber.set(Number.isInteger(versionNumber) ? versionNumber : null);
+          this.draftMatchesPublished.set(true);
+          this.autosaveState.set('saved');
+          this.show(`已发布版本 #${Number.isInteger(versionId) ? versionId : '完成'}。`);
         },
         error: (error: any) => {
           this.busy.set(false);
@@ -848,12 +1000,28 @@ export class WorkflowEditorPage implements AfterViewInit, OnDestroy {
       });
   }
   run(): void {
-    if (!this.publishedVersionId() || !this.bindingsReady()) return;
+    const publishedVersionId = this.publishedVersionId();
+    if (!publishedVersionId || this.busy()) return;
+    const publishedVersionNumber = this.publishedVersionNumber();
+    const draftChanged = this.autosaveState() !== 'saved' || !this.draftMatchesPublished();
+    if (
+      draftChanged &&
+      typeof window !== 'undefined' &&
+      !window.confirm(
+        `当前修改尚未保存或发布，是否继续运行已发布工作流？\n将运行：版本 V${
+          publishedVersionNumber ?? publishedVersionId
+        }\n当前草稿修改不会进入本次运行。`,
+      )
+    ) {
+      return;
+    }
     this.busy.set(true);
-    const inputBindings = Object.fromEntries(this.bindings.entries());
+    const inputBindings = this.draftMatchesPublished()
+      ? Object.fromEntries(this.bindings.entries())
+      : {};
     this.api
       .post<Record<string, unknown>, object>(
-        `/api/v1/workflow-versions/${this.publishedVersionId()}/runs`,
+        `/api/v1/workflow-versions/${publishedVersionId}/runs`,
         { input_bindings: inputBindings, parameter_overrides: {} },
       )
       .subscribe({
@@ -886,6 +1054,8 @@ export class WorkflowEditorPage implements AfterViewInit, OnDestroy {
 
   private markDirty(): void {
     this.autosaveState.set('dirty');
+    this.validationStatus.set('not_validated');
+    this.draftMatchesPublished.set(false);
     const userId = this.auth.user()?.id;
     const workflowId = this.workflowId();
     if (userId && workflowId) {
@@ -917,6 +1087,7 @@ export class WorkflowEditorPage implements AfterViewInit, OnDestroy {
       .subscribe({
         next: (result) => {
           this.draftRevision.set(Number(result['draft_revision'] || this.draftRevision()));
+          this.applyValidationResult(result);
           this.autosaveState.set('saved');
           const userId = this.auth.user()?.id;
           if (userId) void this.workflowCache.remove(userId, workflowId);
@@ -962,7 +1133,7 @@ export class WorkflowEditorPage implements AfterViewInit, OnDestroy {
     this.message.set(text);
     this.notice.success(text);
   }
-  private showError(text: string): void {
+  protected showError(text: string): void {
     this.messageType.set('error');
     this.message.set(text);
     this.notice.error(text);
