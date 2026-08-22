@@ -8,11 +8,12 @@ import {
   currentAlgorithmDocumentVersion,
   extractParameterSpecs,
   linkedAlgorithmCode,
+  operatorDocumentScopeKey,
 } from './operator-center.page';
 
-function operator(algorithm: Record<string, unknown> | null): OperatorSummary {
+function operator(algorithm: Record<string, unknown> | null, code = 'dataset_channel_v1'): OperatorSummary {
   return {
-    code: 'dataset_channel_v1',
+    code,
     name: 'Dataset channel',
     description: '',
     kind: 'data_source',
@@ -51,6 +52,26 @@ describe('operator lifecycle links', () => {
   it('does not construct algorithm requests for non-algorithm nodes', () => {
     expect(linkedAlgorithmCode(operator(null))).toBeNull();
     expect(linkedAlgorithmCode(operator({ reason: 'Algorithm version not found' }))).toBeNull();
+  });
+
+  it('resolves document scope key with algorithm code priority and operator code fallback', () => {
+    // 1. When linked algorithm exists, use its code
+    expect(operatorDocumentScopeKey(operator({ code: 'chronos2_flow_forecast' }, 'chronos2_node'))).toBe(
+      'chronos2_flow_forecast',
+    );
+
+    // 2. When linked algorithm is null or missing, fall back to operator code
+    expect(operatorDocumentScopeKey(operator(null, 'align_timeseries_v1'))).toBe(
+      'align_timeseries_v1',
+    );
+    expect(
+      operatorDocumentScopeKey(
+        operator({ reason: 'Algorithm version not found' }, 's01_minimum_night_flow_v1'),
+      ),
+    ).toBe('s01_minimum_night_flow_v1');
+
+    // 3. When operator is null, return null
+    expect(operatorDocumentScopeKey(null)).toBeNull();
   });
 });
 

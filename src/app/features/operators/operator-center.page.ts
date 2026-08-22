@@ -26,6 +26,18 @@ export function linkedAlgorithmCode(operator: OperatorSummary): string | null {
   return typeof value === 'string' && value.trim() ? value.trim() : null;
 }
 
+export function operatorDocumentScopeKey(operator: OperatorSummary | null): string | null {
+  if (!operator) {
+    return null;
+  }
+  const linkedCode = operator.active_version?.algorithm?.['code'];
+  if (typeof linkedCode === 'string' && linkedCode.trim()) {
+    return linkedCode.trim();
+  }
+  const operatorCode = operator.code;
+  return typeof operatorCode === 'string' && operatorCode.trim() ? operatorCode.trim() : null;
+}
+
 export function currentAlgorithmDocumentVersion(
   document: AlgorithmDocument,
 ): AlgorithmDocumentVersion | null {
@@ -2252,8 +2264,11 @@ export class OperatorCenterPage implements OnDestroy {
   algorithmCode(operator: OperatorSummary): string | null {
     return linkedAlgorithmCode(operator);
   }
+  documentScopeKey(operator: OperatorSummary | null): string | null {
+    return operatorDocumentScopeKey(operator);
+  }
   loadDocuments(operator: OperatorSummary): void {
-    const code = this.algorithmCode(operator);
+    const code = this.documentScopeKey(operator);
     if (!code || !this.auth.hasPermission('algorithm:read')) {
       this.documents.set([]);
       this.loadingDocuments.set(false);
