@@ -118,6 +118,7 @@ export const CHRONOS2_ARCHITECTURE_SVG = `<svg xmlns="http://www.w3.org/2000/svg
 const CHRONOS2_DATA_URI = `data:image/svg+xml;utf8,${encodeURIComponent(CHRONOS2_ARCHITECTURE_SVG)}`;
 
 export const BUILTIN_DOCUMENT_ASSETS: Record<string, string> = {
+  'chronos2-architecture.svg': CHRONOS2_DATA_URI,
   '/assets/docs/chronos2-architecture.svg': CHRONOS2_DATA_URI,
   'assets/docs/chronos2-architecture.svg': CHRONOS2_DATA_URI,
 };
@@ -131,10 +132,12 @@ export function renderAlgorithmDocumentHtml(markdown: string): string {
     return token;
   });
   source = source.replace(/\b(?:javascript|vbscript):/gi, '');
-  for (const [path, dataUri] of Object.entries(BUILTIN_DOCUMENT_ASSETS)) {
-    source = source.replaceAll(`(${path})`, `(${dataUri})`);
-    source = source.replaceAll(`"${path}"`, `"${dataUri}"`);
-    source = source.replaceAll(`'${path}'`, `'${dataUri}'`);
+  for (const [filename, dataUri] of Object.entries(BUILTIN_DOCUMENT_ASSETS)) {
+    const escaped = filename.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const mdRegex = new RegExp(`!\\[(.*?)\\]\\([^\\)]*?${escaped}[^\\)]*?\\)`, 'gi');
+    source = source.replace(mdRegex, `![$1](${dataUri})`);
+    const imgRegex = new RegExp(`<img([^>]*?)src=["'][^"']*?${escaped}[^"']*?["']([^>]*?)>`, 'gi');
+    source = source.replace(imgRegex, `<img$1src="${dataUri}"$2>`);
   }
   source = source.replace(/\$\$([\s\S]+?)\$\$/g, (_match, expression: string) => {
     const token = mathToken(mathSegments.length);
