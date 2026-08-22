@@ -21,6 +21,7 @@ import {
 } from 'dockview-angular';
 
 import { AuthService } from '../../core/services/auth.service';
+import { ApiClient } from '../../core/services/api-client.service';
 import {
   FormlyJsonFieldTypeComponent,
   FormlySliderFieldTypeComponent,
@@ -32,6 +33,7 @@ import {
   WorkflowCanvasPanelComponent,
   WorkflowEditorPanelBridge,
 } from './workflow-editor-panels';
+import { WorkflowCompositeCanvasPanelComponent } from './workflow-composite-canvas-panel.component';
 import {
   WorkspaceLayoutPreference,
   legacyWorkspacePreferenceKey,
@@ -405,6 +407,12 @@ export class WorkflowEditorWorkspacePage extends WorkflowEditorPage implements O
   @ViewChild('workspaceBody') private workspaceBody?: ElementRef<HTMLDivElement>;
   private readonly bridge = inject(WorkflowEditorPanelBridge);
   private readonly workspaceAuth = inject(AuthService);
+  private readonly workspaceApi = inject(ApiClient);
+  private readonly exactCompositeVersions = new Map<
+    string,
+    { executorType: string; workflowVersionId: number | null }
+  >();
+  private readonly exactCompositeLookups = new Set<string>();
   private dockviewApi?: DockviewApi;
   private layoutSubscription?: { dispose(): void };
   private panelRemovalSubscription?: { dispose(): void };
@@ -428,6 +436,7 @@ export class WorkflowEditorWorkspacePage extends WorkflowEditorPage implements O
     canvas: WorkflowCanvasPanelComponent,
     catalog: OperatorCatalogPanelComponent,
     inspector: NodeInspectorPanelComponent,
+    compositeCanvas: WorkflowCompositeCanvasPanelComponent,
   };
   readonly tabComponents = {
     documentTab: WorkflowDocumentTabComponent,
@@ -541,6 +550,90 @@ export class WorkflowEditorWorkspacePage extends WorkflowEditorPage implements O
   override loadGraph(graph: Graph): void {
     super.loadGraph(graph);
     this.scheduleWorkspaceInitialization();
+  }
+
+  override openCompositeNodeDocument(nodeId: string): void {
+    if (!this.dockviewApi || this.mobile()) return;
+    const node = this.nodes().find((item) => item.id === nodeId);
+    if (!node) return;
+    const key = `${node.node_code}@${node.node_version}`;
+    const cached = this.exactCompositeVersions.get(key);
+    if (!cached) {
+      if (this.exactCompositeLookups.has(key)) return;
+      this.exactCompositeLookups.add(key);
+      this.workspaceApi
+        .get<Record<string, unknown>>(
+          `/api/v1/operators/${encodeURIComponent(node.node_code)}/versions/${encodeURIComponent(node.node_version)}`,
+        )
+        .subscribe({
+          next: (response) => {
+            this.exactCompositeLookups.delete(key);
+            const metadata = this.exactCompositeVersionMetadata(response, node.node_version);
+            this.exactCompositeVersions.set(key, metadata);
+            if (metadata.executorType === 'composite_workflow' && metadata.workflowVersionId) {
+              this.openResolvedCompositeNodeDocument(nodeId, metadata.workflowVersionId);
+            }
+          },
+          error: () => {
+            this.exactCompositeLookups.delete(key);
+            this.showError('无法读取该复合节点的版本信息，请稍后重试。');
+          },
+        });
+      return;
+    }
+    if (cached.executorType !== 'composite_workflow' || !cached.workflowVersionId) return;
+    this.openResolvedCompositeNodeDocument(nodeId, cached.workflowVersionId);
+  }
+
+  private exactCompositeVersionMetadata(
+    response: Record<string, unknown>,
+    expectedVersion: string,
+  ): { executorType: string; workflowVersionId: number | null } {
+    const rawVersion = (response['version'] || response) as Record<string, unknown>;
+    if (String(rawVersion['version'] || '') !== expectedVersion) {
+      return { executorType: '', workflowVersionId: null };
+    }
+    const workflowVersionId = Number(rawVersion['composite_workflow_version_id']);
+    return {
+      executorType: String(rawVersion['executor_type'] || ''),
+      workflowVersionId: Number.isInteger(workflowVersionId) ? workflowVersionId : null,
+    };
+  }
+
+  private openResolvedCompositeNodeDocument(nodeId: string, versionId: number): void {
+    if (!this.dockviewApi || this.mobile()) return;
+    const node = this.nodes().find((item) => item.id === nodeId);
+    if (!node) return;
+    const panelId = `canvas:composite:${nodeId}`;
+    const existing = this.dockviewApi.getPanel(panelId);
+    if (existing) {
+      existing.api.setActive();
+      return;
+    }
+    const title = `复合节点 · ${this.operatorNames.displayName(
+      node.node_code,
+      node.definition?.node_name,
+    )}`;
+    const panel = this.dockviewApi.addPanel({
+      id: panelId,
+      component: 'compositeCanvas',
+      tabComponent: 'documentTab',
+      title,
+      params: {
+        kind: 'composite',
+        title,
+        closable: true,
+        path: `root/${nodeId}`,
+        workflowVersionId: versionId,
+        workflowName: this.workflowName(),
+        nodeId,
+        readOnly: true,
+      },
+      position: { referencePanel: ROOT_CANVAS_PANEL_ID, direction: 'within' },
+      renderer: 'always',
+    });
+    panel.api.setActive();
+    this.saveWorkspaceLayout();
   }
 
   private createDefaultLayout(): void {

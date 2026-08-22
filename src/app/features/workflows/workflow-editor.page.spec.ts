@@ -28,6 +28,15 @@ describe('WorkflowEditorPage', () => {
     const api = {
       get: <T>(path: string) => {
         const respond = (value: T) => (asyncApiResponses ? of(value).pipe(delay(0)) : of(value));
+        if (/\/operators\/[^/]+\/versions\//.test(path)) {
+          return respond({
+            version: {
+              version: '1.0.0',
+              executor_type: 'composite_workflow',
+              composite_workflow_version_id: 42,
+            },
+          } as T);
+        }
         if (path.includes('operators')) {
           return respond({
             items: [
@@ -293,5 +302,121 @@ describe('WorkflowEditorPage', () => {
     };
     compositeFixture.detectChanges();
     expect(compositeFixture.nativeElement.querySelector('.document-close')).toBeTruthy();
+  });
+
+  it('opens a composite document only after the same node is picked twice quickly', () => {
+    const page = TestBed.createComponent(WorkflowEditorPage).componentInstance;
+    const definition = {
+      node_code: 'water_adaptive_anomaly',
+      version: '1.0.0',
+      node_name: '水务自适应多变量异常检测',
+      description: '',
+      category: 'composite',
+      runtime_type: 'platform',
+      executor_type: 'composite_workflow',
+      composite_workflow_version_id: 42,
+      input_ports: [],
+      output_ports: [],
+    };
+    page.nodes.set([
+      {
+        id: 'composite-1',
+        node_code: definition.node_code,
+        node_version: definition.version,
+        parameters: {},
+        x: 10,
+        y: 10,
+        collapsed: false,
+        definition,
+      },
+    ]);
+    const openDocument = vi.spyOn(page as any, 'openCompositeNodeDocument');
+
+    (page as any).handleReteNodePicked('composite-1', 100);
+    expect(openDocument).not.toHaveBeenCalled();
+    (page as any).handleReteNodePicked('composite-1', 400);
+
+    expect(openDocument).toHaveBeenCalledWith('composite-1');
+    expect(page.selectedId()).toBe('composite-1');
+  });
+
+  it('does not open ordinary nodes or mutate the graph while double picking', () => {
+    const page = TestBed.createComponent(WorkflowEditorPage).componentInstance;
+    page.nodes.set([
+      {
+        id: 'ordinary-1',
+        node_code: 'dataset_channel_v1',
+        node_version: '1.0.0',
+        parameters: {},
+        x: 10,
+        y: 10,
+        collapsed: false,
+        definition: {
+          node_code: 'dataset_channel_v1',
+          version: '1.0.0',
+          node_name: '数据通道',
+          description: '',
+          category: 'data_source',
+          runtime_type: 'platform',
+          composite_interface: {},
+          input_ports: [],
+          output_ports: [{ key: 'series', label: 'Series', data_type: 'timeseries' }],
+        },
+      },
+    ]);
+    const before = JSON.stringify(page.graph());
+    const openDocument = vi.spyOn(page as any, 'openCompositeNodeDocument');
+
+    (page as any).handleReteNodePicked('ordinary-1', 100);
+    (page as any).handleReteNodePicked('ordinary-1', 300);
+
+    expect(openDocument).not.toHaveBeenCalled();
+    expect(JSON.stringify(page.graph())).toBe(before);
+  });
+
+  it('opens the exact composite version instead of the newer active catalog version', async () => {
+    asyncApiResponses = true;
+    const fixture = TestBed.createComponent(WorkflowEditorWorkspacePage);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    const workspace = fixture.componentInstance;
+    (workspace as any).mobile.set(false);
+    const addedPanels: Array<Record<string, unknown>> = [];
+    (workspace as any).dockviewApi = {
+      getPanel: () => undefined,
+      addPanel: (panel: Record<string, unknown>) => {
+        addedPanels.push(panel);
+        return { api: { setActive: () => undefined } };
+      },
+    };
+    workspace.nodes.set([
+      {
+        id: 'legacy-composite',
+        node_code: 'water_adaptive_anomaly',
+        node_version: '1.0.0',
+        parameters: {},
+        x: 10,
+        y: 10,
+        collapsed: false,
+        definition: {
+          node_code: 'water_adaptive_anomaly',
+          version: '2.0.0',
+          node_name: '水务自适应多变量异常检测',
+          description: '',
+          category: 'composite',
+          runtime_type: 'platform',
+          executor_type: 'composite_workflow',
+          composite_workflow_version_id: 999,
+          input_ports: [],
+          output_ports: [],
+        },
+      },
+    ]);
+
+    (workspace as any).openCompositeNodeDocument('legacy-composite');
+    await fixture.whenStable();
+    await new Promise((resolve) => setTimeout(resolve, 10));
+
+    expect((addedPanels[0]?.['params'] as Record<string, unknown>)?.['workflowVersionId']).toBe(42);
   });
 });

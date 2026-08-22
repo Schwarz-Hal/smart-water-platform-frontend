@@ -48,6 +48,9 @@ export interface Definition {
   ui_schema?: Record<string, Record<string, unknown>>;
   default_params?: Record<string, unknown>;
   algorithm?: Record<string, unknown> | null;
+  executor_type?: string;
+  composite_workflow_version_id?: number | null;
+  composite_interface?: Record<string, unknown> | null;
 }
 export interface EditorNode {
   id: string;
@@ -147,6 +150,8 @@ export class WorkflowEditorPage implements AfterViewInit, OnDestroy {
   private resizeObserver?: ResizeObserver;
   private reteNodes = new Map<string, any>();
   private definitionByCode = new Map<string, Definition>();
+  private lastPickedReteNodeId: string | null = null;
+  private lastPickedAt = 0;
   private hydratingRete = false;
   private suppressReteSync = false;
   private subscriptions: Subscription[] = [];
@@ -259,7 +264,47 @@ export class WorkflowEditorPage implements AfterViewInit, OnDestroy {
           'default_params'
         ] as Record<string, unknown> | undefined) ||
         (version.algorithm?.['default_params'] as Record<string, unknown> | undefined),
+      executor_type: String((version as unknown as Record<string, unknown>)['executor_type'] || ''),
+      composite_workflow_version_id: Number.isInteger(
+        Number((version as unknown as Record<string, unknown>)['composite_workflow_version_id']),
+      )
+        ? Number((version as unknown as Record<string, unknown>)['composite_workflow_version_id'])
+        : null,
+      composite_interface:
+        ((version as unknown as Record<string, unknown>)['composite_interface'] as
+          Record<string, unknown> | null | undefined) ?? null,
     };
+  }
+
+  /** Hook for workspace hosts; the base page intentionally has no document host. */
+  protected openCompositeNodeDocument(_nodeId: string): void {
+    // The plain editor page has no document workspace. The Dockview host overrides this hook.
+  }
+
+  /** Handle Rete's nodepicked event without changing ordinary single-click behaviour. */
+  protected handleReteNodePicked(nodeId: string, pickedAt = Date.now()): void {
+    const id = this.backendIdForRete(nodeId) || nodeId;
+    this.selectedId.set(id);
+    const isDoublePick =
+      this.lastPickedReteNodeId === nodeId &&
+      pickedAt - this.lastPickedAt >= 0 &&
+      pickedAt - this.lastPickedAt <= 350;
+    this.lastPickedReteNodeId = isDoublePick ? null : nodeId;
+    this.lastPickedAt = isDoublePick ? 0 : pickedAt;
+    if (isDoublePick) {
+      const node = this.nodes().find((item) => item.id === id);
+      if (node?.definition && this.isCompositeDefinition(node.definition)) {
+        this.openCompositeNodeDocument(id);
+      }
+    }
+  }
+
+  private isCompositeDefinition(definition: Definition): boolean {
+    return (
+      definition.executor_type === 'composite_workflow' ||
+      (Number.isInteger(definition.composite_workflow_version_id) &&
+        Number(definition.composite_workflow_version_id) > 0)
+    );
   }
   ngAfterViewInit(): void {
     this.observeResize();
@@ -303,6 +348,22 @@ export class WorkflowEditorPage implements AfterViewInit, OnDestroy {
     const loadedNodes = (graph.nodes || []).map((raw, index) => {
       const ui = (raw['ui'] || {}) as Record<string, unknown>;
       const position = (ui['position'] || {}) as Record<string, unknown>;
+      const catalogDefinition = this.definitionByCode.get(String(raw['node_code']));
+      const definition = catalogDefinition
+        ? {
+            ...catalogDefinition,
+            executor_type:
+              (raw['executor_type'] as string | undefined) ?? catalogDefinition.executor_type,
+            composite_workflow_version_id: Number.isInteger(
+              Number(raw['composite_workflow_version_id']),
+            )
+              ? Number(raw['composite_workflow_version_id'])
+              : catalogDefinition.composite_workflow_version_id,
+            composite_interface:
+              (raw['composite_interface'] as Record<string, unknown> | null | undefined) ??
+              catalogDefinition.composite_interface,
+          }
+        : undefined;
       return {
         id: String(raw['id']),
         node_code: String(raw['node_code']),
@@ -311,7 +372,7 @@ export class WorkflowEditorPage implements AfterViewInit, OnDestroy {
         x: Number(position['x'] ?? 34 + (index % 2) * 285),
         y: Number(position['y'] ?? 30 + Math.floor(index / 2) * 145),
         collapsed: Boolean(ui['collapsed'] ?? false),
-        definition: this.definitionByCode.get(String(raw['node_code'])),
+        definition,
       };
     });
     this.nodes.set(loadedNodes);
@@ -444,10 +505,7 @@ export class WorkflowEditorPage implements AfterViewInit, OnDestroy {
       return context;
     });
     this.reteArea.addPipe((context: any) => {
-      if (context.type === 'nodepicked') {
-        const id = this.backendIdForRete(context.data.id);
-        if (id) this.selectedId.set(id);
-      }
+      if (context.type === 'nodepicked') this.handleReteNodePicked(String(context.data.id));
       if (
         !this.hydratingRete &&
         (context.type === 'nodetranslated' || context.type === 'nodetranslate')
@@ -1075,7 +1133,7 @@ export class WorkflowEditorPage implements AfterViewInit, OnDestroy {
     this.message.set(text);
     this.notice.success(text);
   }
-  private showError(text: string): void {
+  protected showError(text: string): void {
     this.messageType.set('error');
     this.message.set(text);
     this.notice.error(text);
